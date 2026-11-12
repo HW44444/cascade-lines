@@ -109,6 +109,20 @@
           if (s > 0) phase += (TAU * DS) / wave[i];
         }
       }
+      /* A corridor this wide cannot turn inside its own width: past that the surface folds
+         through itself and the run tears open. Ease the sharpest turns to a radius the width can
+         hold, carrying what is taken off into the rows after it so the line still comes round
+         the same way, just over a slightly longer arc. */
+      {
+        let carry = 0;
+        for (let i = 1; i < N; i++) {
+          const m = (DS * 0.78) / Math.max(14, (hw[i] + EDGE) * 1.16);
+          let dp = psi[i] - psi[i - 1] + carry;
+          if (dp > m) { carry = dp - m; dp = m; } else if (dp < -m) { carry = dp + m; dp = -m; } else carry = 0;
+          if (carry > 0.6) carry = 0.6; else if (carry < -0.6) carry = -0.6;
+          psi[i] = psi[i - 1] + dp;
+        }
+      }
       for (let i = 0; i < N - 1; i++) { cx[i + 1] = cx[i] + Math.sin(psi[i]) * DS; cz[i + 1] = cz[i] - Math.cos(psi[i]) * DS; }
       for (let i = 1; i < N - 1; i++) kap[i] = (psi[i + 1] - psi[i - 1]) / (2 * DS);
 
@@ -195,6 +209,17 @@
         for (let j = Math.max(0, i - 10); j <= Math.min(N - 1, i + 10); j++) { if (kap[j] > kmax) kmax = kap[j]; if (kap[j] < kmin) kmin = kap[j]; }
         limR[i] = kmax > 1e-5 ? 0.78 / kmax : 1e9; limL[i] = kmin < -1e-5 ? 0.78 / -kmin : 1e9;
       }
+      /* How far the surface can reach must not jump from one row to the next, or the run's edge
+         comes out sawtoothed and the coarse ground beside it cannot follow. */
+      for (let i = 1; i < N; i++) { if (limR[i] > limR[i - 1] + 1) limR[i] = limR[i - 1] + 1; if (limL[i] > limL[i - 1] + 1) limL[i] = limL[i - 1] + 1; }
+      for (let i = N - 2; i >= 0; i--) { if (limR[i] > limR[i + 1] + 1) limR[i] = limR[i + 1] + 1; if (limL[i] > limL[i + 1] + 1) limL[i] = limL[i + 1] + 1; }
+      /* A turn can only hold so much width before the surface folds through itself. Where the piste
+         is wider than its own bend allows, pinch the run in rather than letting the mesh stop short
+         of where the rider is still allowed to go — that is what opens the voids. */
+      for (let i = 0; i < N; i++) {
+        const room = Math.min(limR[i], limL[i]) * 0.86 - EDGE;
+        if (room < hw[i]) hw[i] = Math.max(7, room);
+      }
       this.limR = limR; this.limL = limL;
       const gx = (this.gx = new Float32Array(N * NC)), gh = (this.gh = new Float32Array(N * NC));
       for (let i = 0; i < N; i++) {
@@ -204,14 +229,16 @@
           if (c < NO) x0 = -(W + OUT[NO - 1 - c]);
           else if (c < NO + NIN) x0 = (((c - NO) / (NIN - 1)) * 2 - 1) * W;
           else x0 = W + OUT[c - NO - NIN];
-          let x = x0;
-          /* Inside a bend there is only so much room before the shelf folds over itself.
-             Squeeze it into what room there is rather than flattening it into an apron. */
+          /* Inside a bend there is only so much room before the surface folds over itself.
+             Squeezing the columns into that room keeps every one of them distinct; pinning them
+             all to the limit instead collapses whole quads to nothing and opens holes in the run. */
           const lim = x0 > 0 ? limR[i] : limL[i];
-          if (Math.abs(x0) > W && Math.abs(cut[i]) > 0.25 && lim < 1e8) {
-            const room = Math.max(3, lim - W), d0 = Math.abs(x0) - W;
-            x = (x0 < 0 ? -1 : 1) * (W + room * (1 - Math.exp(-d0 / room)));
-          } else if (x > limR[i]) x = limR[i]; else if (x < -limL[i]) x = -limL[i];
+          let x = x0;
+          if (lim < 1e8) {
+            const sg = x0 < 0 ? -1 : 1, ax = Math.abs(x0), reach = lim * 0.92, Wc = Math.min(W, reach);
+            if (ax <= W) x = sg * ax * (Wc / W);
+            else { const room = Math.max(2, reach - Wc); x = sg * (Wc + room * (1 - Math.exp(-(ax - W) / room))); }
+          }
           const u = x / hwI, au = Math.abs(u);
           let h = ey[i], namp = 0.9 + pow[i] * 0.7;
           const PW = 4.2;   /* superpipe wall: flat floor, then a steepening transition to the deck */
@@ -728,21 +755,22 @@
            How far the run's own mesh really covers is what decides where this grid takes over. */
         const li = Math.max(0, Math.min(run.N - 1, Math.round((sC + S0) / DS)));
         const lim = side < 0 ? run.limL[li] : run.limR[li];
-        const inner = Math.min(hw + EDGE + OUT[NO - 1], Math.max(hw + EDGE, lim));
+        const inner = Math.min(hw + EDGE + OUT[NO - 1], Math.max(4, lim * 0.92));
         const beyond = pr.s - sC, sec = run.secAt(sC);
         let h;
         if (a <= inner && beyond === 0) {
           /* The corridor mesh already covers this ground, and this grid is far too coarse to
              follow it: one flat cell can span the piste and roof it over. Hold the seam exactly,
              then duck well under the run so no cell can surface through it. */
-          const inset = inner - a;
-          /* Never read the corridor from a single point: one flat cell spans 46 m of a surface
-             that rolls on a much shorter wavelength, so take the lowest ground it could bridge. */
-          let low = run.gridH(sC, pr.x), t;
+          const inset = inner - a, exact = run.gridH(sC, pr.x);
+          /* Away from the seam, one flat cell spans 46 m of ground that rolls on a far shorter
+             wavelength, so take the lowest it could bridge. At the seam itself take the corridor's
+             own edge exactly, or the two meet with a step and the run looks cut away. */
+          let low = exact, t;
           for (const dx of [-STEP * 0.62, STEP * 0.62]) { t = run.gridH(sC, G.clamp(pr.x + dx, -inner, inner)); if (t < low) low = t; }
           for (const ds of [-STEP * 0.62, STEP * 0.62]) { t = run.gridH(G.clamp(sC + ds, sA, sB), pr.x); if (t < low) low = t; }
-          /* Tight at the seam, then away under the run fast enough that nothing can surface. */
-          h = low - 0.4 - Math.min((inset * inset) / 20, 60);
+          const blend = G.smooth(inset / (STEP * 0.5));
+          h = exact + (low - exact) * blend - 0.4 - Math.min((inset * inset) / 20, 60);
         } else {
           const d = Math.max(0, a - inner) + Math.abs(beyond), near = run.gridH(sC, side * Math.min(a, inner)) - 0.4;
           const t = ((X - run.cx[0]) * ax + (Z - run.cz[0]) * az) / (al * al);
