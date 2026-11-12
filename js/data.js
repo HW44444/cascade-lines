@@ -31,7 +31,7 @@
     /* ------------------------------------------------------------------ */
     {
       id: 'meadows', name: 'Mt. Hood Meadows', short: 'Meadows', range: 'Mt. Hood · east side',
-      base: 4523, top: 7300, vert: 2777, acres: '2,150', need: 9, aspect: 120, real: true,
+      base: 4523, top: 7300, vert: 2777, acres: '2,150', need: 18, aspect: 120, real: true,
       blurb: 'Bowls up top, canyons out right, and a park lap by the lodge.',
       peaks: [{ az: 180, h: 2500, w: 24 }, { az: 58, h: 620, w: 5 }, { az: -70, h: 380, w: 9 }],
       runs: [
@@ -154,7 +154,7 @@
     /* ------------------------------------------------------------------ */
     {
       id: 'summit', name: 'Summit Pass', short: 'Summit', range: 'Government Camp',
-      base: 4000, top: 4290, vert: 290, acres: '70', need: 6, aspect: 190,
+      base: 4000, top: 4290, vert: 290, acres: '70', need: 9, aspect: 190,
       blurb: 'Open since 1927. Short, mellow laps that are perfect for learning tricks.',
       peaks: [{ az: 180, h: 2900, w: 28 }, { az: 4, h: 520, w: 30 }, { az: 30, h: 700, w: 5 }],
       map: {
@@ -203,7 +203,7 @@
     /* ------------------------------------------------------------------ */
     {
       id: 'timberline', name: 'Timberline', short: 'Timberline', range: 'Mt. Hood · south side',
-      base: 4844, top: 8540, vert: 3696, acres: '1,415', need: 8, aspect: 185, real: true,
+      base: 4844, top: 8540, vert: 3696, acres: '1,415', need: 16, aspect: 185, real: true,
       blurb: 'Year-round snow on Palmer, the parks off Stormin’ Norman, and long fall-line blues into the trees.',
       peaks: [{ az: 180, h: 3000, w: 30 }, { az: 5, h: 860, w: 6 }, { az: 13, h: 330, w: 3 }, { az: 16, h: 300, w: 3 }],
       runs: [
@@ -289,7 +289,7 @@
     /* ------------------------------------------------------------------ */
     {
       id: 'hoodoo', name: 'Hoodoo', short: 'Hoodoo', range: 'Santiam Pass',
-      base: 4668, top: 5703, vert: 1035, acres: '806', need: 8, aspect: 60,
+      base: 4668, top: 5703, vert: 1035, acres: '806', need: 12, aspect: 60,
       blurb: 'A volcanic butte with night laps out front and steep powder out back.',
       peaks: [{ az: 180, h: 420, w: 44 }, { az: -42, h: 640, w: 4 }, { az: 52, h: 760, w: 3 }, { az: 78, h: 560, w: 4 }, { az: 86, h: 520, w: 4 }],
       map: {
@@ -353,7 +353,7 @@
     /* ------------------------------------------------------------------ */
     {
       id: 'bachelor', name: 'Mt. Bachelor', short: 'Bachelor', range: 'Central Cascades',
-      base: 5700, top: 9065, vert: 3365, acres: '4,323', need: 12, aspect: 20,
+      base: 5700, top: 9065, vert: 3365, acres: '4,323', need: 14, aspect: 20,
       blurb: 'A full volcano to ride: lava-flow whoops, a mile of park and a summit cirque.',
       peaks: [{ az: 180, h: 1500, w: 36 }, { az: -16, h: 980, w: 5 }, { az: -8, h: 900, w: 4 }, { az: -1, h: 940, w: 5 }, { az: 15, h: 760, w: 6 }],
       map: {

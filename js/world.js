@@ -723,27 +723,35 @@
       const hs = new Float32Array(nx * nz), forest = new Float32Array(nx * nz);
       for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
         const X = x0 + i * STEP, Z = z0 + j * STEP, pr = run.project(X, Z);
-        const sC = G.clamp(pr.s, sA, sB), a = Math.abs(pr.x), side = pr.x < 0 ? -1 : 1, hw = run.hwAt(sC), inner = hw + EDGE + OUT[NO - 1];
+        const sC = G.clamp(pr.s, sA, sB), a = Math.abs(pr.x), side = pr.x < 0 ? -1 : 1, hw = run.hwAt(sC);
+        /* Through a bend the corridor's outer shelf is pulled in well short of its nominal reach.
+           How far the run's own mesh really covers is what decides where this grid takes over. */
+        const li = Math.max(0, Math.min(run.N - 1, Math.round((sC + S0) / DS)));
+        const lim = side < 0 ? run.limL[li] : run.limR[li];
+        const inner = Math.min(hw + EDGE + OUT[NO - 1], Math.max(hw + EDGE, lim));
         const beyond = pr.s - sC, sec = run.secAt(sC);
         let h;
         if (a <= inner && beyond === 0) {
           /* The corridor mesh already covers this ground, and this grid is far too coarse to
              follow it: one flat cell can span the piste and roof it over. Hold the seam exactly,
              then duck well under the run so no cell can surface through it. */
-          const inset = inner - a, lip = STEP * 0.5;
-          if (inset <= lip) h = run.gridH(sC, pr.x) - 0.4;
-          else {
-            let low = run.gridH(sC, pr.x), t;
-            for (const dx of [-STEP * 0.62, STEP * 0.62]) { t = run.gridH(sC, G.clamp(pr.x + dx, -inner, inner)); if (t < low) low = t; }
-            for (const ds of [-STEP * 0.62, STEP * 0.62]) { t = run.gridH(G.clamp(sC + ds, sA, sB), pr.x); if (t < low) low = t; }
-            h = low - 0.4 - Math.min(inset - lip, 90) * 0.6;
-          }
+          const inset = inner - a;
+          /* Never read the corridor from a single point: one flat cell spans 46 m of a surface
+             that rolls on a much shorter wavelength, so take the lowest ground it could bridge. */
+          let low = run.gridH(sC, pr.x), t;
+          for (const dx of [-STEP * 0.62, STEP * 0.62]) { t = run.gridH(sC, G.clamp(pr.x + dx, -inner, inner)); if (t < low) low = t; }
+          for (const ds of [-STEP * 0.62, STEP * 0.62]) { t = run.gridH(G.clamp(sC + ds, sA, sB), pr.x); if (t < low) low = t; }
+          /* Tight at the seam, then away under the run fast enough that nothing can surface. */
+          h = low - 0.4 - Math.min((inset * inset) / 20, 60);
         } else {
           const d = Math.max(0, a - inner) + Math.abs(beyond), near = run.gridH(sC, side * Math.min(a, inner)) - 0.4;
           const t = ((X - run.cx[0]) * ax + (Z - run.cz[0]) * az) / (al * al);
           const macro = eyA - (eyA - eyB) * G.clamp(t, -0.8, 1.7) - (t > 1 ? (t - 1) * al * 0.03 : 0);
-          const trend = (G.fbm(sC / 700 + 9, side * 2.7 + 4, seed) - 0.47) * 0.5;
-          const hills = (G.fbm(X / 1500, Z / 1500, seed + 5) - 0.5) * 2 * 340 * G.smooth(d / 1100) + (G.fbm(X / 360, Z / 360, seed + 8) - 0.5) * 2 * 46 * G.smooth(d / 220);
+          /* Hold the ground beside the run close to the run's own level and only let the wider
+             mountain assert itself further out, or a slope or hollow lands right next to the piste. */
+          const ramp = G.smooth(d / 300);
+          const trend = (G.fbm(sC / 700 + 9, side * 2.7 + 4, seed) - 0.47) * 0.5 * ramp;
+          const hills = ((G.fbm(X / 1500, Z / 1500, seed + 5) - 0.5) * 2 * 340 * G.smooth(d / 1100) + (G.fbm(X / 360, Z / 360, seed + 8) - 0.5) * 2 * 46 * G.smooth(d / 220)) * ramp;
           const k = G.smooth(d / 420);
           h = G.lerp(near, macro + trend * Math.min(d, 1400), k) + (1 - k) * trend * d + hills;
           if (beyond < 0) h += -beyond * avg * 0.5 * (1 - k);
@@ -759,8 +767,8 @@
         const hl = hs[j * nx + Math.max(0, i - 1)], hr = hs[j * nx + Math.min(nx - 1, i + 1)], hu = hs[Math.max(0, j - 1) * nx + i], hd = hs[Math.min(nz - 1, j + 1) * nx + i];
         const steep = Math.hypot(hr - hl, hd - hu) / (2 * STEP);
         let r = 0.95, g = 0.965, b = 1.0;
-        const wood = G.fbm(X / 210, Z / 210, seed + 21) < forest[k] * 0.92 ? 1 : 0;
-        if (wood) { const m = 0.62 + 0.2 * G.noise2(X / 60, Z / 60, seed); r = G.lerp(r, 0.2, m); g = G.lerp(g, 0.33, m); b = G.lerp(b, 0.3, m); }
+        const wd = G.smooth((forest[k] * 0.92 - G.fbm(X / 210, Z / 210, seed + 21)) / 0.16);
+        if (wd > 0.03) { const m = wd * (0.5 + 0.22 * G.noise2(X / 60, Z / 60, seed)); r = G.lerp(r, 0.26, m); g = G.lerp(g, 0.38, m); b = G.lerp(b, 0.34, m); }
         else if (steep > 0.62) { const m = G.smooth((steep - 0.62) / 0.3) * 0.75; r = G.lerp(r, 0.4, m); g = G.lerp(g, 0.38, m); b = G.lerp(b, 0.42, m); }
         col[o] = r * dim; col[o + 1] = g * dim; col[o + 2] = b * dim;
       }
@@ -778,7 +786,7 @@
 
     buildFeatures() {
       const run = this.run, scene = this.scene, v = new T.Vector3(), v2 = new T.Vector3();
-      const acc = this.accent;
+      const acc = this.accent.clone().lerp(new T.Color(1, 1, 1), 0.52);
       const mat = this.own(new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0 }));
       this.featGroup = new T.Group(); scene.add(this.featGroup);
       for (const k of run.kickers) {
@@ -883,7 +891,7 @@
         m.userData.s0 = b * band - S0; m.userData.s1 = m.userData.s0 + band; this.treeBands.push(m);
       });
       const rGeo = this.own(rockGeo()), rMat = this.own(new T.MeshLambertMaterial({ vertexColors: true }));
-      inst(rGeo, rMat, run.rocks, (r) => { p.set(r.X, r.Y, r.Z); q.setFromAxisAngle(up, r.rot); sc.set(r.sz * 1.2, r.sz * 0.8, r.sz); }, true);
+      this.rockMesh = inst(rGeo, rMat, run.rocks, (r) => { p.set(r.X, r.Y, r.Z); q.setFromAxisAngle(up, r.rot); sc.set(r.sz * 1.2, r.sz * 0.8, r.sz); }, true);
       /* piste marker poles in the run's difficulty colour, orange-topped on the right-hand edge */
       const dc = G.hex3(G.DIFF[run.def.diff].color), oc = [1, 0.42, 0.1], lean = new T.Vector3(0, 0, 1);
       const poleGeo = (top) => { const a = new T.CylinderGeometry(0.04, 0.04, 1.25, 6); a.translate(0, 0.62, 0); const b = new T.CylinderGeometry(0.045, 0.045, 0.5, 6); b.translate(0, 1.5, 0); return this.own(G.mergeGeos([{ g: a, color: dc }, { g: b, color: top }])); };
