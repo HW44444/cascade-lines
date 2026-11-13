@@ -680,6 +680,7 @@
         Nn[o] = nx / nl; Nn[o + 1] = ny / nl; Nn[o + 2] = nz / nl;
       }
       const texG = this.own(snowTexture('groomed', this.aniso)), texP = this.own(snowTexture('powder', this.aniso));
+      this.texP = texP; this.texG = texG;
       const matG = this.own(new T.MeshStandardMaterial({ vertexColors: true, map: texG, roughness: 0.6, metalness: 0, normalMap: this.own(corduroyNormal(this.aniso)), normalScale: new T.Vector2(0.38, 0.38) }));
       /* corduroy only between the piste markers: the groom weight rides in as a vertex attribute */
       matG.onBeforeCompile = (sh) => {
@@ -738,24 +739,41 @@
        rolls away into ridges, valleys and forest so the view never ends at a wall of fog. */
     buildBackdrop() {
       const run = this.run, sky = this.sky, seed = (run.seed >> 3) & 0xfff, N = run.N;
-      const STEP = this.q === 'low' ? 70 : 46, PAD = 2700;
+      /* Close to the run this grid has to follow a corridor edge that moves on a short
+         wavelength, so it is fine there and only coarsens once it is far enough away to matter. */
+      const fine = this.q === 'low' ? 17 : 11, PAD = 2700, NEAR = 300;
       let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
       for (let i = 0; i < N; i += 8) { if (run.cx[i] < x0) x0 = run.cx[i]; if (run.cx[i] > x1) x1 = run.cx[i]; if (run.cz[i] < z0) z0 = run.cz[i]; if (run.cz[i] > z1) z1 = run.cz[i]; }
-      x0 -= PAD; x1 += PAD; z0 -= PAD; z1 += PAD;
-      const nx = Math.ceil((x1 - x0) / STEP) + 1, nz = Math.ceil((z1 - z0) / STEP) + 1;
+      const axis = (lo, hi) => {
+        const mid = [];
+        for (let v = lo - NEAR; v <= hi + NEAR + 1e-6; v += fine) mid.push(v);
+        let st = fine, v = mid[mid.length - 1];
+        while (v < hi + NEAR + PAD) { st = Math.min(st * 1.25, 300); v += st; mid.push(v); }
+        const pre = []; st = fine; v = mid[0];
+        while (v > lo - NEAR - PAD) { st = Math.min(st * 1.25, 300); v -= st; pre.push(v); }
+        pre.reverse(); return pre.concat(mid);
+      };
+      const xs = axis(x0, x1), zs = axis(z0, z1);
+      const nx = xs.length, nz = zs.length;
+      x0 = xs[0]; z0 = zs[0];
       const pos = new Float32Array(nx * nz * 3), col = new Float32Array(nx * nz * 3), idx = new Uint32Array((nx - 1) * (nz - 1) * 6);
+      const uvB = new Float32Array(nx * nz * 2);
       const sA = -S0 + 1, sB = run.L - 1, eyA = run.ey[0], eyB = run.ey[N - 1];
       const ax = run.cx[N - 1] - run.cx[0], az = run.cz[N - 1] - run.cz[0], al = Math.hypot(ax, az) || 1;
       const avg = (eyA - eyB) / al, midE = (eyA + eyB) / 2;
       const hs = new Float32Array(nx * nz), forest = new Float32Array(nx * nz);
       for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
-        const X = x0 + i * STEP, Z = z0 + j * STEP, pr = run.project(X, Z);
+        const X = xs[i], Z = zs[j], pr = run.project(X, Z);
         const sC = G.clamp(pr.s, sA, sB), a = Math.abs(pr.x), side = pr.x < 0 ? -1 : 1, hw = run.hwAt(sC);
         /* Through a bend the corridor's outer shelf is pulled in well short of its nominal reach.
            How far the run's own mesh really covers is what decides where this grid takes over. */
         const li = Math.max(0, Math.min(run.N - 1, Math.round((sC + S0) / DS)));
         const lim = side < 0 ? run.limL[li] : run.limR[li];
-        const inner = Math.min(hw + EDGE + OUT[NO - 1], Math.max(4, lim * 0.92));
+        /* Where the run's own surface ends, exactly: its outer columns are eased into the room the
+           bend leaves them, so they stop short of that room. Start dipping any sooner than this and
+           a hollow opens along the side of the piste. */
+        const Wr = hw + EDGE, reach = lim * 0.92, Wc = Math.min(Wr, reach), room = Math.max(2, reach - Wc);
+        const inner = lim < 1e8 ? Wc + room * (1 - Math.exp(-OUT[NO - 1] / room)) : Wr + OUT[NO - 1];
         const beyond = pr.s - sC, sec = run.secAt(sC);
         let h;
         if (a <= inner && beyond === 0) {
@@ -767,10 +785,13 @@
              wavelength, so take the lowest it could bridge. At the seam itself take the corridor's
              own edge exactly, or the two meet with a step and the run looks cut away. */
           let low = exact, t;
-          for (const dx of [-STEP * 0.62, STEP * 0.62]) { t = run.gridH(sC, G.clamp(pr.x + dx, -inner, inner)); if (t < low) low = t; }
-          for (const ds of [-STEP * 0.62, STEP * 0.62]) { t = run.gridH(G.clamp(sC + ds, sA, sB), pr.x); if (t < low) low = t; }
-          const blend = G.smooth(inset / (STEP * 0.5));
-          h = exact + (low - exact) * blend - 0.4 - Math.min((inset * inset) / 20, 60);
+          for (const dx of [-fine * 0.75, fine * 0.75]) { t = run.gridH(sC, G.clamp(pr.x + dx, -inner, inner)); if (t < low) low = t; }
+          for (const ds of [-fine * 0.75, fine * 0.75]) { t = run.gridH(G.clamp(sC + ds, sA, sB), pr.x); if (t < low) low = t; }
+          const blend = G.smooth(inset / (fine * 1.1));
+          /* Hold off dipping until a full cell inside the seam: a cell that straddles it would
+             otherwise drag the ground down well outside the run too, hollowing out its sides. */
+          const sink = Math.max(0, inset - fine * 1.4);
+          h = exact + (low - exact) * blend - 0.4 - Math.min((sink * sink) / 20, 60);
         } else {
           const d = Math.max(0, a - inner) + Math.abs(beyond), near = run.gridH(sC, side * Math.min(a, inner)) - 0.4;
           const t = ((X - run.cx[0]) * ax + (Z - run.cz[0]) * az) / (al * al);
@@ -790,10 +811,12 @@
       }
       const dim = sky.night ? 0.3 : 1;
       for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
-        const k = j * nx + i, X = x0 + i * STEP, Z = z0 + j * STEP, o = k * 3;
+        const k = j * nx + i, X = xs[i], Z = zs[j], o = k * 3;
         pos[o] = X; pos[o + 1] = hs[k]; pos[o + 2] = Z;
+        uvB[k * 2] = X / 2.6; uvB[k * 2 + 1] = Z / 2.6;
         const hl = hs[j * nx + Math.max(0, i - 1)], hr = hs[j * nx + Math.min(nx - 1, i + 1)], hu = hs[Math.max(0, j - 1) * nx + i], hd = hs[Math.min(nz - 1, j + 1) * nx + i];
-        const steep = Math.hypot(hr - hl, hd - hu) / (2 * STEP);
+        const dxs = (xs[Math.min(nx - 1, i + 1)] - xs[Math.max(0, i - 1)]) || fine, dzs = (zs[Math.min(nz - 1, j + 1)] - zs[Math.max(0, j - 1)]) || fine;
+        const steep = Math.hypot((hr - hl) / dxs, (hd - hu) / dzs);
         let r = 0.95, g = 0.965, b = 1.0;
         const wd = G.smooth((forest[k] * 0.92 - G.fbm(X / 210, Z / 210, seed + 21)) / 0.16);
         if (wd > 0.03) { const m = wd * (0.5 + 0.22 * G.noise2(X / 60, Z / 60, seed)); r = G.lerp(r, 0.26, m); g = G.lerp(g, 0.38, m); b = G.lerp(b, 0.34, m); }
@@ -807,9 +830,12 @@
       }
       const geo = this.own(new T.BufferGeometry());
       geo.setAttribute('position', new T.BufferAttribute(pos, 3)); geo.setAttribute('color', new T.BufferAttribute(col, 3));
+      geo.setAttribute('uv', new T.BufferAttribute(uvB, 2));
       geo.setIndex(new T.BufferAttribute(idx, 1)); geo.computeVertexNormals();
-      const m = new T.Mesh(geo, this.own(new T.MeshLambertMaterial({ vertexColors: true })));
-      m.name = 'backdrop'; m.frustumCulled = false; this.scene.add(m); this.backdrop = m;
+      /* Same snow, same shading model as the off-piste surface it meets. Lit any differently it
+         reads as emptiness beside the run rather than as the mountain carrying on. */
+      const m = new T.Mesh(geo, this.own(new T.MeshStandardMaterial({ vertexColors: true, map: this.texG, roughness: 0.6, metalness: 0 })));
+      m.name = 'backdrop'; m.frustumCulled = false; m.receiveShadow = true; this.scene.add(m); this.backdrop = m;
     }
 
     buildFeatures() {
