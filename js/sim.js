@@ -181,15 +181,7 @@
       const ix = this.finished ? 0 : inp.x, iy = this.finished ? 0 : inp.y;
       const sr = SPIN * (this.gear === 'board' ? 1.06 : 1);
       if (Math.abs(ix) > 0.25) this.spinV = G.damp(this.spinV, ix * sr, 16, dt);
-      else {
-        /* Sticks released: swing round to parallel with the way you are travelling - normal or
-           switch, whichever is nearer - at the ordinary spin rate, easing off only over the last
-           stretch. bodyYaw is measured off the velocity, so zero means the skis point where you
-           are going. Let go too late and the snow arrives while you are still crossed up. */
-        const stop = this.bodyYaw + this.spinV * 0.15;                  /* where the rotation would coast to */
-        const err = Math.round(stop / PI) * PI - this.bodyYaw;          /* finish the turn rather than fight it back */
-        this.spinV = G.damp(this.spinV, G.clamp(err * 4.4, -sr, sr), 10, dt);
-      }
+      else this.spinV = G.clamp((Math.round(this.bodyYaw / PI) * PI - this.bodyYaw) * 9, -sr, sr);   // settle to the nearest clean landing
       if (Math.abs(iy) > 0.25) { this.flipV = G.damp(this.flipV, iy * FLIP, 16, dt); this.flipDir = iy > 0 ? 1 : -1; }
       else {
         const err = Math.round(this.flip / TAU) * TAU - this.flip;
@@ -226,7 +218,7 @@
       const m = (run.height(this.s + e * c, this.x + e * sn) - run.height(this.s - e * c, this.x - e * sn)) / (2 * e);
       const vn = (this.vy - this.v * m) / Math.sqrt(1 + m * m);
       this.y = hN;
-      const yawErr = Math.abs(this.bodyYaw - Math.round(this.bodyYaw / PI) * PI);   /* off the direction of travel */
+      const yawErr = Math.abs(this.bodyYaw - Math.round(this.bodyYaw / PI) * PI);
       const flipErr = Math.abs(G.wrapPi(this.flip));
       const trivial = this.air < 0.28 && Math.abs(this.spin) < 0.5 && Math.abs(this.flip) < 0.5;
       const deep = this.run.powAt(this.s);                      /* knee-deep snow absorbs a bad landing */
