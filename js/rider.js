@@ -106,7 +106,8 @@
           this.skis.push(sg);
         }
         this.poles = [];
-        for (let i = 0; i < 2; i++) { const p = add(b, new T.CylinderGeometry(0.012, 0.012, 1, 5), dark); this.poles.push(p); }
+        const poleM = this.mat(L.pole || '#15191d');
+        for (let i = 0; i < 2; i++) { const p = add(b, new T.CylinderGeometry(0.012, 0.012, 1, 5), poleM); this.poles.push(p); }
       } else {
         this.board = new T.Group(); this.board.position.y = 0.02; this.gearG.add(this.board);
         add(this.board, new T.BoxGeometry(0.28, 0.026, 1.22), gearM);
@@ -129,11 +130,21 @@
       add(this.pelvis, new T.BoxGeometry(0.32, 0.2, 0.22), pants).position.y = 0.02;
       this.torso = new T.Group(); this.torso.position.y = 0.08; this.pelvis.add(this.torso);
       const chest = add(this.torso, new T.CylinderGeometry(0.185, 0.155, 0.5, 10), jacket); chest.position.y = 0.26; chest.scale.set(1.12, 1, 0.74);
+      if (L.pack) {
+        const pk = add(this.torso, new T.BoxGeometry(0.26, 0.34, 0.15), this.mat(L.pack)); pk.position.set(0, 0.28, 0.17);
+        add(this.torso, new T.BoxGeometry(0.2, 0.05, 0.04), dark).position.set(0, 0.36, 0.25);
+      }
       const sh = add(this.torso, new T.SphereGeometry(0.19, 10, 6), jacket); sh.position.y = 0.46; sh.scale.set(1.2, 0.5, 0.78);
       add(this.torso, new T.BoxGeometry(0.27, 0.36, 0.15), gearM).position.set(0, 0.3, 0.17);
       this.headG = new T.Group(); this.headG.position.y = 0.69; this.headG.scale.set(1.3, 1.3, 1.3); this.torso.add(this.headG);
       add(this.headG, new T.SphereGeometry(0.108, 10, 8), skin);
-      const hel = add(this.headG, new T.SphereGeometry(0.128, 12, 8, 0, PI * 2, 0, PI * 0.62), helmet); hel.position.y = 0.012;
+      if (L.hat === 'beanie') {
+        const bn = add(this.headG, new T.SphereGeometry(0.122, 12, 8, 0, PI * 2, 0, PI * 0.58), helmet); bn.position.y = 0.022;
+        add(this.headG, new T.CylinderGeometry(0.124, 0.124, 0.038, 12), helmet).position.y = 0.026;
+        add(this.headG, new T.SphereGeometry(0.042, 8, 6), this.mat(L.pom || '#ffffff')).position.y = 0.14;
+      } else {
+        const hel = add(this.headG, new T.SphereGeometry(0.128, 12, 8, 0, PI * 2, 0, PI * 0.62), helmet); hel.position.y = 0.012;
+      }
       const gog = add(this.headG, new T.BoxGeometry(0.2, 0.075, 0.08), this.mat('#ff8a2b')); gog.position.set(0, 0.012, -0.085);
       add(this.headG, new T.BoxGeometry(0.235, 0.05, 0.2), dark).position.set(0, 0.012, 0.0);
     }

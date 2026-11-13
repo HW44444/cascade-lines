@@ -7,7 +7,7 @@
 
   const runCache = new Map();
   G.getRun = function (resort, def) {
-    const key = resort.id + '/' + def.id;
+    const key = resort.id + '/' + def.id + (G.skyFor(def).night ? '/n' : '');   /* night adds lamp posts to the run itself */
     if (runCache.has(key)) { const r = runCache.get(key); runCache.delete(key); runCache.set(key, r); return r; }
     const run = new G.Run(resort, def);
     runCache.set(key, run);
@@ -95,7 +95,7 @@
       const gear = G.Save.data.gear, run = (this.run = G.getRun(resort, def));
       this.world = new G.World(run, this.renderer, this.quality);
       this.sim = new G.Sim(run, gear);
-      this.rider = new G.Rider(gear, G.LOOKS[G.Save.data.look] || G.LOOKS[0]);
+      this.rider = new G.Rider(gear, G.kitLook());
       this.world.scene.add(this.rider.root);
       this.parts = new G.Particles(this.world.scene, 700);
       this.tracks = new G.Tracks(this.world.scene, gear === 'ski' ? 2 : 1, !!this.world.sky.night);
@@ -121,7 +121,7 @@
       if (!this.world) return;
       const gear = G.Save.data.gear;
       this.world.scene.remove(this.rider.root); this.rider.dispose();
-      this.rider = new G.Rider(gear, G.LOOKS[G.Save.data.look] || G.LOOKS[0]); this.world.scene.add(this.rider.root);
+      this.rider = new G.Rider(gear, G.kitLook()); this.world.scene.add(this.rider.root);
       this.sim.gear = gear;
       this.tracks.dispose(); this.tracks = new G.Tracks(this.world.scene, gear === 'ski' ? 2 : 1, this.night);
     }

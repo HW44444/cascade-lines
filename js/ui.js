@@ -22,7 +22,7 @@
   };
 
   /* ---------------- save ---------------- */
-  const Save = (G.Save = { data: { v: 1, gear: 'ski', look: 0, units: 'mph', sound: true, quality: 'auto', runs: {}, seenHint: false, unlockAll: false } });
+  const Save = (G.Save = { data: { v: 1, gear: 'ski', look: 0, units: 'mph', sound: true, quality: 'auto', runs: {}, seenHint: false, unlockAll: false, time: 'auto', wx: 'auto', coins: 0, own: [], kit: {} } });
   Save.load = function (seed) {
     try { const raw = window.localStorage.getItem(KEY); if (raw) Object.assign(Save.data, JSON.parse(raw)); } catch (e) { /* storage can be unavailable */ }
     if (seed && seed.runs) {
@@ -43,10 +43,13 @@
     const doneWas = Save.stars(resort) >= resort.need;
     const stars = prev.stars.map((s, i) => (s || res.stars[i] ? 1 : 0));
     Save.data.runs[resort.id + '/' + def.id] = { stars, best: Math.max(prev.best, res.score), time: prev.time ? Math.min(prev.time, res.time) : res.time };
+    const newStars = stars.map((s, i) => !!s && !prev.stars[i]);
+    const unlocked = !nextWas && Save.unlocked(idx + 1) ? G.RESORTS[idx + 1] : null;
+    const pay = G.payout(res, newStars.filter(Boolean).length, !!unlocked);
+    Save.data.coins = (Save.data.coins || 0) + pay.total;
     Save.write();
     return {
-      newStars: stars.map((s, i) => !!s && !prev.stars[i]), prev,
-      unlocked: !nextWas && Save.unlocked(idx + 1) ? G.RESORTS[idx + 1] : null,
+      newStars, prev, unlocked, pay,
       seasonDone: idx === G.RESORTS.length - 1 && !doneWas && Save.stars(resort) >= resort.need,
     };
   };
@@ -241,13 +244,23 @@
     $('btnUnits').addEventListener('click', UI.toggleUnits); $('pUnits').addEventListener('click', UI.toggleUnits);
     $('btnQuality').addEventListener('click', UI.cycleQuality); $('pQuality').addEventListener('click', UI.cycleQuality);
     document.querySelectorAll('[data-nav]').forEach((b) => b.addEventListener('click', () => { G.Audio.click(); UI.show(b.dataset.nav); }));
+    $('shopGrid').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-buy],[data-equip]'); if (!b) return;
+      const slot = b.dataset.buy || b.dataset.equip;
+      const done = b.dataset.buy ? G.Wallet.buy(slot, b.dataset.id) : G.Wallet.equip(slot, b.dataset.id);
+      if (done) { G.Audio.click(); UI.renderShop(); if (UI.game) UI.game.setRider(); }
+    });
     $('tickets').addEventListener('click', (e) => {
       const t = e.target.closest('.ticket'); if (!t || t.classList.contains('locked')) return;
       G.Audio.click(); UI.openResort(G.RESORTS[+t.dataset.i]);
     });
     $('mapsheet').addEventListener('click', (e) => { const h = e.target.closest('[data-run]'); if (h) UI.selectRun(h.dataset.run); });
     $('runlist').addEventListener('click', (e) => { const h = e.target.closest('[data-run]'); if (h) UI.selectRun(h.dataset.run); });
-    $('sel').addEventListener('click', (e) => { if (e.target.closest('#btnGo')) UI.dropIn(); });
+    $('sel').addEventListener('click', (e) => {
+      if (e.target.closest('#btnGo')) return UI.dropIn();
+      const c = e.target.closest('[data-cond]');
+      if (c) { G.Audio.click(); Save.data[c.dataset.cond] = c.dataset.val; Save.write(); UI.renderSel(); }
+    });
     $('pResume').addEventListener('click', () => game.togglePause());
     $('pRestart').addEventListener('click', () => { UI.hideOverlays(); game.restart(); });
     $('pMap').addEventListener('click', () => UI.backToMap());
@@ -284,20 +297,22 @@
 
   UI.show = function (name) {
     $('mapover').hidden = true;
-    ['title', 'resorts', 'map'].forEach((n) => { $('s-' + n).hidden = n !== name; });
+    ['title', 'resorts', 'map', 'shop'].forEach((n) => { $('s-' + n).hidden = n !== name; });
     UI.hideOverlays();
     if (UI.game && UI.game.mode !== 'attract') UI.game.attract();
     if (name === 'resorts') UI.renderResorts();
     if (name === 'map') UI.renderMap();
+    if (name === 'shop') UI.renderShop();
     const el = $('s-' + name); if (el) el.scrollTop = 0;
   };
-  UI.hideScreens = function () { ['title', 'resorts', 'map'].forEach((n) => { $('s-' + n).hidden = true; }); };
+  UI.hideScreens = function () { ['title', 'resorts', 'map', 'shop'].forEach((n) => { $('s-' + n).hidden = true; }); };
   UI.hideOverlays = function () { $('pause').hidden = true; $('results').hidden = true; };
   UI.showPause = function () { $('pauseSub').textContent = UI.game.def.name + ' · ' + UI.game.resort.name; $('pause').hidden = false; };
   UI.hidePause = function () { $('pause').hidden = true; };
   UI.backToMap = function () { UI.resort = UI.game.resort; UI.runId = UI.game.def.id; UI.show('map'); };
 
   UI.renderResorts = function () {
+    const pc = $('passCoins'); if (pc) pc.textContent = G.fmt(G.Wallet.get());
     $('tickets').innerHTML = G.RESORTS.map((r, i) => {
       const open = Save.unlocked(i), got = Save.stars(r), max = r.runs.length * 3, done = got >= r.need;
       const prev = G.RESORTS[i - 1];
@@ -340,14 +355,28 @@
     }).join('');
     UI.renderSel();
   };
+  /* Time and weather pickers. "As it comes" leaves the run's own default look. */
+  function picker(kind, table, d) {
+    const cur = Save.data[kind], sky = G.skyFor(d), now = kind === 'time' ? sky.timeKey : sky.wxKey;
+    const opts = [['auto', 'As it comes']].concat(Object.keys(table).map((k) => [k, table[k].label]));
+    return opts.map(([k, lab]) => {
+      const on = cur === k;
+      const hint = k === 'auto' ? ' title="' + G.esc(table[now].label) + ' on this run"' : '';
+      return `<button class="cond${on ? ' on' : ''}" data-cond="${kind}" data-val="${k}"${hint}>${G.esc(lab)}</button>`;
+    }).join('');
+  }
   UI.renderSel = function () {
     const r = UI.resort, d = G.runById(r, UI.runId), rec = Save.rec(r, d), g = G.goals(r, d);
     const mi = (g.len / 1609).toFixed(1);
     $('sel').innerHTML = `
       <div class="top">${G.symSVG(d.diff, 30)}<h3>${G.esc(d.name)}</h3></div>
-      <p class="meta">${G.DIFF[d.diff].label} · ${G.esc(d.lift)} · ${G.fmt(d.elev[0] - d.elev[1])} ft vertical · ${mi} mi<span class="chip">${SKYNAME[d.sky] || ''}</span>${
+      <p class="meta">${G.DIFF[d.diff].label} · ${G.esc(d.lift)} · ${G.fmt(d.elev[0] - d.elev[1])} ft vertical · ${mi} mi<span class="chip">${G.esc(G.condName(d))}</span>${
         d.powder ? '<span class="chip pow">Powder</span>' : ''}${d.race ? '<span class="chip race">Slalom</span>' : ''}${d.deadTrees ? '<span class="chip warn">Tight trees</span>' : ''}</p>
       <p class="blurb">${G.esc(d.blurb)}</p>
+      <div class="conds">
+        <div class="condrow"><span>Time</span><div>${picker('time', G.TIME, d)}</div></div>
+        <div class="condrow"><span>Weather</span><div>${picker('wx', G.WX, d)}</div></div>
+      </div>
       <table class="goals">
         ${[0, 1, 2].map((i) => `<tr><td>${star(rec.stars[i])}</td><td>${G.goalText(g, i)}</td><td class="num">${
           g.kind === 'park' ? (i === 0 && rec.best ? 'Best ' + G.fmt(rec.best) : '') : (i === 1 && rec.time ? 'Best ' + G.fmtTime(rec.time) : '')}</td></tr>`).join('')}
@@ -358,6 +387,26 @@
   UI.dropIn = function () {
     const r = UI.resort, d = G.runById(r, UI.runId);
     G.Audio.init(); UI.hideScreens(); UI.game.load(r, d, 'play');
+  };
+
+  /* ---------------- shop ---------------- */
+  UI.renderShop = function () {
+    const coins = G.Wallet.get();
+    $('shopCoins').textContent = G.fmt(coins);
+    $('shopGrid').innerHTML = G.SLOTS.map((slot) => {
+      const cat = G.SHOP[slot], kit = Save.data.kit || {};
+      const rows = cat.items.map((i) => {
+        const own = G.owns(slot, i.id), on = own && (kit[slot] ? kit[slot] === i.id : i.price === 0 && cat.items.indexOf(i) === 0);
+        const can = coins >= i.price;
+        const btn = on ? '<button class="on" disabled>Worn</button>'
+          : own ? `<button class="own" data-equip="${slot}" data-id="${i.id}">Wear</button>`
+          : `<button data-buy="${slot}" data-id="${i.id}"${can ? '' : ' disabled'}>${G.fmt(i.price)}</button>`;
+        const sw = i.color ? `<span class="sw" style="background:${i.color}"></span>` : '<span class="sw none"></span>';
+        const sub = i.tier ? i.tier : i.hat === 'beanie' ? 'Beanie' : '';
+        return `<li>${sw}<span class="nm">${G.esc(i.name)}${sub ? `<small>${G.esc(sub)}</small>` : ''}</span>${btn}</li>`;
+      }).join('');
+      return `<div class="shopcat"><h3>${G.esc(cat.name)}</h3><p class="sub">${slot === 'gear' || slot === 'poles' ? 'Looks only for now \u2014 every star time stays comparable.' : 'Pick a look.'}</p><ul>${rows}</ul></div>`;
+    }).join('');
   };
 
   /* ---------------- full-screen trail map ---------------- */

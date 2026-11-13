@@ -121,6 +121,31 @@ table.goals td:first-child{width:28px}
 table.goals td:last-child{text-align:right;color:#4a5d66}
 .star{width:18px;height:18px;display:inline-block;vertical-align:-3px;fill:none;stroke:#7d9098;stroke-width:1.6}
 .star.on{fill:var(--gold);stroke:#b98600}
+.shophead{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.pill.coins{background:var(--ink);color:#fff;font:700 13px var(--body);padding:5px 12px;border-radius:999px;display:inline-flex;gap:7px;align-items:center}
+.pill.coins b{font-size:15px}
+.shopgrid{columns:4 250px;column-gap:18px;padding:16px clamp(16px,4vw,48px) 40px}
+.shopcat{background:var(--paper);color:var(--ink);border-radius:8px;box-shadow:0 12px 30px rgba(0,0,0,.4);padding:14px 16px 16px;margin:0 0 18px;break-inside:avoid}
+.shopcat h3{margin:0 0 2px;font-size:15px}
+.shopcat p.sub{margin:0 0 10px;font-size:12px;color:#6a7c85}
+.shopcat ul{list-style:none;margin:0;padding:0}
+.shopcat li{display:grid;grid-template-columns:22px 1fr auto;gap:9px;align-items:center;padding:6px 2px;border-top:1px solid var(--rule)}
+.shopcat li:first-child{border-top:0}
+.sw{width:20px;height:20px;border-radius:5px;box-shadow:inset 0 0 0 1px rgba(23,36,45,.25)}
+.sw.none{background:repeating-linear-gradient(45deg,#dfe6ea 0 4px,#fff 4px 8px)}
+.shopcat .nm{font-weight:600;font-size:13.5px}
+.shopcat .nm small{display:block;font-weight:500;font-size:11px;color:#7d9098}
+.shopcat button{font:700 12px var(--body);padding:4px 10px;border-radius:999px;background:var(--signal);color:#fff;white-space:nowrap}
+.shopcat button.own{background:var(--paper-2);color:#42555f;box-shadow:inset 0 0 0 1px var(--rule)}
+.shopcat button.on{background:var(--ink);color:#fff;box-shadow:none}
+.shopcat button[disabled]{background:var(--paper-2);color:#a8b6bd;box-shadow:inset 0 0 0 1px var(--rule)}
+.conds{display:grid;gap:6px;margin:10px 0 2px}
+.condrow{display:grid;grid-template-columns:62px 1fr;align-items:center;gap:8px}
+.condrow>span{font:700 11px var(--body);letter-spacing:.06em;text-transform:uppercase;color:#6a7c85}
+.condrow>div{display:flex;flex-wrap:wrap;gap:4px}
+button.cond{font:600 12px var(--body);padding:3px 8px;border-radius:999px;background:var(--paper-2);color:#42555f;box-shadow:inset 0 0 0 1px var(--rule)}
+button.cond:hover{background:#fff}
+button.cond.on{background:var(--ink);color:#fff;box-shadow:none}
 .runlist{list-style:none;margin:14px 0 0;padding:0;border-top:2px solid var(--ink)}
 .runlist button{display:grid;grid-template-columns:30px 1fr auto;gap:8px;align-items:center;width:100%;text-align:left;padding:7px 4px;border-bottom:1px solid var(--rule);font-weight:600;font-size:14px;color:var(--ink)}
 .runlist button:hover{background:var(--paper-2)}
@@ -367,9 +392,18 @@ table.res .new{color:var(--signal);font-size:11px;letter-spacing:.1em;text-trans
 <section class="screen scrim-full" id="s-resorts" hidden>
   <div class="head">
     <div><h2>Season pass</h2><p>Every star you earn punches a hole in that mountain’s card. Fill the card to open the next mountain.</p></div>
-    <button class="link" data-nav="title">← Title</button>
+    <div class="shophead"><span class="pill coins">Points <b id="passCoins" class="num">0</b></span><button class="link" data-nav="shop">Shop →</button><button class="link" data-nav="title">← Title</button></div>
   </div>
   <div class="tickets" id="tickets"></div>
+</section>
+
+<!-- shop -->
+<section class="screen scrim-full" id="s-shop" hidden>
+  <div class="head">
+    <div><h2>Base lodge shop</h2><p>Points come from riding: tricks, finishes, stars. Spend them on what you turn up in.</p></div>
+    <div class="shophead"><span class="pill coins">Points <b id="shopCoins" class="num">0</b></span><button class="link" data-nav="resorts">← Season pass</button></div>
+  </div>
+  <div class="shopgrid" id="shopGrid"></div>
 </section>
 
 <!-- trail map -->
@@ -423,6 +457,7 @@ table.res .new{color:var(--signal);font-size:11px;letter-spacing:.1em;text-trans
 <script src="js/geo-timberline.js"></script>
 <script src="js/geo-hoodoo.js"></script>
 <script src="js/data.js"></script>
+<script src="js/shop.js"></script>
 <script src="js/world.js"></script>
 <script src="js/sim.js"></script>
 <script src="js/rider.js"></script>

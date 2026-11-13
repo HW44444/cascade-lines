@@ -475,7 +475,7 @@
         }
       }
       /* lamp posts for night sessions */
-      if (this.def.sky === 'night') {
+      if (G.skyFor(this.def).night) {
         let q = 0;
         for (let s = -20; s < this.L - 10; s += 44, q++) {
           const x = (q % 2 ? 1 : -1) * (this.hwAt(s) + 2.5); this.toWorld(s, x, this.gridH(s, x), v);
@@ -499,7 +499,7 @@
     snow: { top: 0xb4bec8, hor: 0xe1e7ec, fog: 0xe1e7ec, fogNear: 30, fogFar: 520, sun: 0xffffff, sunI: 0.2, sunAz: 40, sunEl: 55, hemiSky: 0xe6ecf2, hemiGround: 0xffffff, hemiI: 0.76, snow: 1, ridge: 0xcfd7de, cap: 0xe6ebf0 },
     overcast: { top: 0x93a5b6, hor: 0xd6dee5, fog: 0xd6dee5, fogNear: 120, fogFar: 1150, sun: 0xfff8ee, sunI: 0.36, sunAz: 60, sunEl: 45, hemiSky: 0xd6e0ea, hemiGround: 0xffffff, hemiI: 0.62, snow: 0.3, ridge: 0x9fb0bf, cap: 0xe4eaef },
     dusk: { top: 0x2b3f86, hor: 0xffb48c, fog: 0xf2c2ae, fogNear: 260, fogFar: 2800, sun: 0xff9d62, sunI: 0.9, sunAz: 72, sunEl: 14, hemiSky: 0x8c9ee0, hemiGround: 0xffd8c8, hemiI: 0.72, snow: 0, ridge: 0x5f5488, cap: 0xffc9b8 },
-    night: { top: 0x040816, hor: 0x0f1b36, fog: 0x0a1226, fogNear: 50, fogFar: 650, sun: 0xfff0d0, sunI: 0.82, sunAz: 20, sunEl: 62, hemiSky: 0x4a5f92, hemiGround: 0x1f2a4a, hemiI: 0.72, snow: 0.15, ridge: 0x0b1326, cap: 0x26324d, night: true },
+    night: { top: 0x040816, hor: 0x0f1b36, fog: 0x0a1226, fogNear: 50, fogFar: 650, sun: 0xdfe8ff, sunI: 0.46, sunAz: 20, sunEl: 62, hemiSky: 0x3c4f7c, hemiGround: 0x18203a, hemiI: 0.38, snow: 0.15, ridge: 0x0b1326, cap: 0x26324d, night: true },
   };
 
   function snowTexture(kind, aniso) {
@@ -593,11 +593,59 @@
     return G.mergeGeos([{ g: p, color: [0.36, 0.42, 0.43] }, { g: a, color: [0.3, 0.35, 0.36] }]);
   }
 
+  /* ---------------------------------------------------------------------- */
+  /* Time of day and weather are two separate dials. A run carries a default
+     look; the player can override either one, and the two are composed here.
+     `storm` is the colour a sky drifts toward as the weather closes in - white
+     by day, dark blue at night, so a blizzard after dark stays dark. */
+  G.TIME = {
+    dawn: Object.assign({}, G.SKY.dawn, { storm: 0xc9c4cc, label: 'Dawn' }),
+    midday: Object.assign({}, G.SKY.bluebird, { storm: 0xe3e9ee, label: 'Midday' }),
+    dusk: Object.assign({}, G.SKY.dusk, { storm: 0xb6a3ae, label: 'Dusk' }),
+    night: Object.assign({}, G.SKY.night, { storm: 0x121a2e, label: 'Night' }),
+  };
+  G.WX = {
+    clear: { label: 'Clear', tint: 0, near: 1e6, far: 1e6, snow: 0, wind: 0.4, sunMul: 1, hemiMul: 1 },
+    light: { label: 'Light snow', tint: 0.3, near: 180, far: 1400, snow: 0.5, wind: 0.8, sunMul: 0.72, hemiMul: 1.12 },
+    medium: { label: 'Snowing', tint: 0.62, near: 90, far: 760, snow: 1.3, wind: 1.5, sunMul: 0.4, hemiMul: 1.4 },
+    heavy: { label: 'Heavy snow', tint: 0.86, near: 45, far: 400, snow: 2.6, wind: 2.4, sunMul: 0.18, hemiMul: 1.68 },
+    blizzard: { label: 'Blizzard', tint: 1, near: 18, far: 165, snow: 4.4, wind: 3.6, sunMul: 0.07, hemiMul: 1.85 },
+  };
+  /* what each run looks like when the player has not chosen */
+  G.SKYDEF = { bluebird: ['midday', 'clear'], dawn: ['dawn', 'clear'], dusk: ['dusk', 'clear'],
+    night: ['night', 'clear'], snow: ['midday', 'heavy'], overcast: ['midday', 'light'] };
+  const _c1 = new T.Color(), _c2 = new T.Color();
+  const mixHex = (a, b, t) => _c1.setHex(a).lerp(_c2.setHex(b), t).getHex();
+  G.skyFor = function (def) {
+    const base = G.SKYDEF[def.sky] || G.SKYDEF.bluebird, sv = (G.Save && G.Save.data) || {};
+    const tk = G.TIME[sv.time] ? sv.time : base[0], wk = G.WX[sv.wx] ? sv.wx : base[1];
+    const t = G.TIME[tk], w = G.WX[wk], o = Object.assign({}, t);
+    o.timeKey = tk; o.wxKey = wk;
+    o.fog = mixHex(t.fog, t.storm, w.tint);
+    o.hor = mixHex(t.hor, t.storm, w.tint);
+    o.top = mixHex(t.top, t.storm, w.tint * 0.85);
+    o.ridge = mixHex(t.ridge, t.storm, w.tint * 0.9);
+    o.cap = mixHex(t.cap, t.storm, w.tint * 0.9);
+    o.fogNear = Math.min(t.fogNear, w.near);
+    o.fogFar = Math.min(t.fogFar, w.far) * (t.night ? 0.85 : 1);
+    /* A whiteout is BRIGHT: the sun goes, and the sky itself becomes the light
+       source, so the ground reads as white rather than grey. After dark the
+       same weather only lifts the ambient a little. */
+    o.hemiSky = mixHex(t.hemiSky, 0xffffff, w.tint * (t.night ? 0.16 : 0.88));
+    o.hemiGround = mixHex(t.hemiGround, 0xffffff, w.tint * (t.night ? 0.1 : 0.92));
+    o.sunI = t.sunI * w.sunMul;
+    o.hemiI = t.hemiI * (t.night ? 1 + (w.hemiMul - 1) * 0.3 : w.hemiMul);
+    o.snow = Math.max(t.snow || 0, w.snow); o.wind = w.wind;
+    o.glow = t.night ? 0 : 1 - w.tint * 0.92;
+    return o;
+  };
+  G.condName = function (def) { const s = G.skyFor(def); return G.TIME[s.timeKey].label + ' \u00b7 ' + G.WX[s.wxKey].label; };
+
   /* ====================================================================== */
   class World {
     constructor(run, renderer, quality) {
       this.run = run; this.q = quality; this.disposables = [];
-      const sky = (this.sky = G.SKY[run.def.sky] || G.SKY.bluebird);
+      const sky = (this.sky = G.skyFor(run.def));
       const scene = (this.scene = new T.Scene());
       scene.fog = new T.Fog(sky.fog, sky.fogNear, sky.fogFar);
       scene.background = new T.Color(sky.hor);
@@ -621,7 +669,7 @@
     buildSky() {
       const sky = this.sky, scene = this.scene;
       const mat = this.own(new T.ShaderMaterial({
-        uniforms: { top: { value: new T.Color(sky.top) }, hor: { value: new T.Color(sky.hor) }, sunDir: { value: this.sunDir }, sunCol: { value: new T.Color(sky.sun) }, glow: { value: sky.night ? 0.0 : sky.snow >= 1 ? 0.1 : 1.0 } },
+        uniforms: { top: { value: new T.Color(sky.top) }, hor: { value: new T.Color(sky.hor) }, sunDir: { value: this.sunDir }, sunCol: { value: new T.Color(sky.sun) }, glow: { value: sky.glow != null ? sky.glow : 1.0 } },
         vertexShader: 'varying vec3 vDir; void main(){ vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
         fragmentShader: 'uniform vec3 top; uniform vec3 hor; uniform vec3 sunDir; uniform vec3 sunCol; uniform float glow; varying vec3 vDir; void main(){ vec3 d = normalize(vDir); float h = clamp(d.y*1.5+0.04,0.0,1.0); vec3 c = mix(hor, top, pow(h,0.6)); float sd = max(dot(d, sunDir),0.0); c += sunCol*(pow(sd,900.0)*1.4 + pow(sd,14.0)*0.2)*glow; gl_FragColor = vec4(c,1.0); }',
         side: T.BackSide, depthWrite: false, fog: false,
@@ -694,8 +742,8 @@
       const lamps = run.lamps;
       const lampF = (s, x) => {
         if (!sky.night) return 1;
-        let f = 0.36; const qi = Math.round((s + 20) / 44);
-        for (let q = qi - 1; q <= qi + 1; q++) { const L = lamps[q]; if (!L) continue; const d2 = (s - L.s) * (s - L.s) + (x - L.x) * (x - L.x); f = Math.max(f, 0.36 + 0.64 * Math.exp(-d2 / (2 * 28 * 28))); }
+        let f = 0.26; const qi = Math.round((s + 20) / 44);
+        for (let q = qi - 1; q <= qi + 1; q++) { const L = lamps[q]; if (!L) continue; const d2 = (s - L.s) * (s - L.s) + (x - L.x) * (x - L.x); f = Math.max(f, 0.26 + 0.74 * Math.exp(-d2 / (2 * 26 * 26))); }
         return f;
       };
       const RPC = 48; this.chunks = [];
@@ -859,7 +907,7 @@
           const h = run.gridH(s, x) + kickH(k, s, x) + (border ? -0.14 : 0.035);
           run.toWorld(s, x, h, v); const o = (a * nl + b) * 3; pos[o] = v.x; pos[o + 1] = v.y; pos[o + 2] = v.z;
           const lip = !k.ride && us[a] >= k.L - 0.5 && us[a] <= k.L + 0.01 && b >= 2 && b <= nl - 3;
-          const nf = this.sky.night ? 0.6 : 1;
+          const nf = this.sky.night ? 0.44 : 1;
           col[o] = (lip ? acc.r : 0.955) * nf; col[o + 1] = (lip ? acc.g : 0.97) * nf; col[o + 2] = (lip ? acc.b : 1.0) * nf;
           if (a < nu - 1 && b < nl - 1) { const p = a * nl + b; idx.push(p, p + 1, p + nl + 1, p, p + nl + 1, p + nl); }
         }
@@ -1031,11 +1079,12 @@
     }
 
     buildSnowfall(amount) {
-      const n = Math.round((this.q === 'low' ? 500 : 1500) * amount), pos = new Float32Array(n * 3), rnd = G.rng(3);
+      const n = Math.round((this.q === 'low' ? 520 : 1550) * amount), pos = new Float32Array(n * 3), rnd = G.rng(3);
       for (let i = 0; i < n; i++) { pos[i * 3] = (rnd() - 0.5) * 70; pos[i * 3 + 1] = rnd() * 36 - 8; pos[i * 3 + 2] = (rnd() - 0.5) * 70; }
       const g = this.own(new T.BufferGeometry()); g.setAttribute('position', new T.BufferAttribute(pos, 3));
       const m = new T.Points(g, this.own(new T.PointsMaterial({ color: 0xffffff, size: 0.16, transparent: true, opacity: 0.9, depthWrite: false, map: this.own(glowTexture()), fog: false })));
       m.frustumCulled = false; this.scene.add(m); this.flakes = { m, pos, n, off: new T.Vector3() };
+      this.wind = this.sky.wind || 0.4;
     }
 
     update(dt, camera, riderS, time, riderPos) {
@@ -1055,10 +1104,11 @@
         this.sun.position.copy(riderPos).addScaledVector(this.sunDir, 240);
       }
       if (this.flakes) {
-        const { m, pos, n } = this.flakes, cp = camera.position;
+        const { m, pos, n } = this.flakes, cp = camera.position, wnd = this.wind || 0.4;
+        const gust = 1 + (wnd > 1.6 ? Math.sin(time * 0.8) * 0.3 + Math.sin(time * 2.3) * 0.16 : 0);
         for (let i = 0; i < n; i++) {
           const o = i * 3;
-          pos[o + 1] -= (2.2 + (i % 5) * 0.4) * dt; pos[o] += (1.5 + (i % 3)) * dt;
+          pos[o + 1] -= (2.2 + (i % 5) * 0.4 + wnd * 0.7) * dt; pos[o] += (0.9 + (i % 3)) * wnd * gust * dt; pos[o + 2] += (0.3 + (i % 2) * 0.5) * wnd * gust * 0.55 * dt;
           const lx = pos[o] - cp.x, ly = pos[o + 1] - cp.y, lz = pos[o + 2] - cp.z;
           if (lx > 35 || lx < -35) pos[o] = cp.x + ((((lx + 35) % 70) + 70) % 70) - 35;
           if (ly < -8 || ly > 28) pos[o + 1] = cp.y + ((((ly + 8) % 36) + 36) % 36) - 8;
