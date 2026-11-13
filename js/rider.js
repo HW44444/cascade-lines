@@ -24,6 +24,8 @@
       brake: P({ hipY: 0.6, tPitch: -0.2, L: [-0.46, 0.62, -0.1], R: [0.46, 0.66, -0.14] }),
       air: P({ hipY: 0.6, tPitch: -0.3, L: [-0.52, 0.86, -0.1], R: [0.52, 0.86, -0.1] }),
       spin: P({ hipY: 0.5, tPitch: -0.5, L: [-0.2, 0.58, -0.26], R: [0.2, 0.58, -0.26] }),
+      pop: P({ hipY: 0.87, tPitch: -0.08, L: [-0.34, 0.99, -0.06], R: [0.34, 0.99, -0.06] }),
+      land: P({ hipY: 0.84, tPitch: -0.14, L: [-0.54, 0.8, 0.0], R: [0.54, 0.8, 0.0] }),
       grind: P({ hipY: 0.6, tPitch: -0.3, L: [-0.55, 0.72, 0], R: [0.55, 0.72, 0] }),
       cheer: P({ hipY: 0.8, tPitch: -0.05, L: [-0.3, 1.3, -0.05], R: [0.3, 1.3, -0.05] }),
       crash: P({ hipY: 0.42, tPitch: -0.9, L: [-0.55, 0.3, 0.2], R: [0.5, 0.75, -0.2] }),
@@ -39,6 +41,8 @@
       brake: P({ hipY: 0.58, tPitch: 0.0, tYaw: 0.2, head: 0.7, L: [-0.5, 0.66, -0.1], R: [0.5, 0.64, -0.1] }),
       air: P({ hipY: 0.56, tPitch: -0.2, tYaw: 0.3, head: 0.7, L: [-0.54, 0.84, 0], R: [0.54, 0.8, 0] }),
       spin: P({ hipY: 0.48, tPitch: -0.36, tYaw: 0.2, head: 0.6, L: [-0.24, 0.56, -0.2], R: [0.24, 0.56, -0.2] }),
+      pop: P({ hipY: 0.85, tPitch: -0.06, tYaw: 0.34, head: 0.6, L: [-0.38, 0.96, 0.04], R: [0.38, 0.94, 0.04] }),
+      land: P({ hipY: 0.82, tPitch: -0.12, tYaw: 0.3, head: 0.55, L: [-0.56, 0.78, 0.06], R: [0.56, 0.76, 0.06] }),
       grind: P({ hipY: 0.58, tPitch: -0.2, tYaw: 0.2, head: 0.7, L: [-0.56, 0.74, 0], R: [0.56, 0.74, 0] }),
       cheer: P({ hipY: 0.78, tPitch: 0, tYaw: 0.7, head: 0.5, L: [-0.3, 1.28, -0.05], R: [0.3, 1.28, -0.05] }),
       crash: P({ hipY: 0.42, tPitch: -0.8, L: [-0.55, 0.3, 0.2], R: [0.5, 0.75, -0.2] }),
@@ -75,6 +79,7 @@
       this.spinG.position.y = 0.85; this.body.position.y = -0.85;
       this.spinG.rotation.order = 'YXZ';
       this.n = new T.Vector3(0, 1, 0); this.lean = 0; this.leanV = 0; this.brakeYaw = 0; this.pitchBack = 0;
+      this.airing = false; this.reland = 0; this.spot = 0; this.twist = 0; this.prep = 0;
       this.hipLat = 0; this.counter = 0; this.headLook = 0; this.plant = 0; this.plantSide = 1; this.lastSteer = 0; this.bob = 0;
       this.crashRot = new T.Vector3(); this.crashVel = new T.Vector3();
       this.pose = {}; NUMKEYS.forEach((k) => (this.pose[k] = POSES[gear].ride[k]));
@@ -177,19 +182,55 @@
       if (st === 'crash') {
         this.crashRot.addScaledVector(this.crashVel, dt); this.crashVel.multiplyScalar(1 - 1.2 * dt);
         this.spinG.rotation.set(this.crashRot.x, this.crashRot.y, this.crashRot.z);
+        this.airing = false; this.reland = 0;
+      } else if (st === 'air') {
+        this.crashRot.set(0, 0, 0);
+        if (!this.airing) {
+          this.airing = true;
+          _eu.set(0, -(sim.bodyYaw + this.brakeYaw), 0);
+          this.spinG.quaternion.setFromEuler(_eu);
+        }
+        /* Turn about the axis the rider is actually turning on. Stacking a flip angle and a spin
+           angle as separate Euler terms makes the two fight each other as the flip passes vertical;
+           one rotation about the combined axis is what a cork, a rodeo and a misty really are. */
+        const wx = sim.flipV, wy = -sim.spinV, len = Math.hypot(wx, wy);
+        if (len > 1e-4) {
+          _ax.set(wx / len, wy / len, 0);
+          _qc.setFromAxisAngle(_ax, len * dt);
+          this.spinG.quaternion.multiply(_qc);
+        }
       } else {
         this.crashRot.set(0, 0, 0);
         const press = st === 'grind' && sim.grind ? sim.grind.press * 0.28 : 0;
-        this.spinG.rotation.set(sim.flip + press, -(sim.bodyYaw + this.brakeYaw), this.pitchBack * (this.brakeYaw >= 0 ? 1 : -1));
+        _eu.set(sim.flip + press, -(sim.bodyYaw + this.brakeYaw), this.pitchBack * (this.brakeYaw >= 0 ? 1 : -1));
+        _qc.setFromEuler(_eu);
+        if (this.airing) { this.airing = false; this.reland = 0.2; }
+        /* ride the last of the rotation out instead of snapping square on touchdown */
+        if (this.reland > 0) { this.reland -= dt; this.spinG.quaternion.slerp(_qc, Math.min(1, dt * 17)); }
+        else this.spinG.quaternion.copy(_qc);
       }
       this.root.visible = sim.inv > 0 ? Math.floor(time * 14) % 2 === 0 : true;
+
+      /* How long until the snow comes back up: a rider reaches for a landing well before it
+         arrives, and that reach is most of what makes an air read as controlled. */
+      let prep = 0, rot = 0;
+      if (st === 'air') {
+        rot = Math.max(Math.abs(sim.spinV), Math.abs(sim.flipV));
+        const hAbove = Math.max(0, sim.y - run.height(sim.s, sim.x));
+        const tLand = (sim.vy + Math.sqrt(Math.max(0, sim.vy * sim.vy + 19.62 * hAbove))) / 9.81;
+        prep = G.clamp(1 - tLand / 0.44, 0, 1) * G.clamp(sim.air / 0.26, 0, 1);
+      }
+      this.prep = G.damp(this.prep, prep, 15, dt);
+      /* the head stays with the landing while the body comes round, and the chest leads the turn */
+      this.spot = G.damp(this.spot, st === 'air' ? G.clamp(-sim.spinV * 0.17, -0.8, 0.8) : 0, st === 'air' ? 7 : 11, dt);
+      this.twist = G.damp(this.twist, st === 'air' ? G.clamp(sim.spinV * 0.075, -0.32, 0.32) : 0, 8, dt);
 
       /* choose a pose */
       const set = POSES[gear];
       let key = 'ride';
       if (st === 'crash') key = 'crash';
       else if (sim.finished && sim.v < 1.5 && st === 'ground') key = 'cheer';
-      else if (st === 'air') key = sim.grab ? 'g' + sim.grab : Math.abs(sim.spinV) > 2.5 || Math.abs(sim.flipV) > 2.5 ? 'spin' : sim.air > 0.12 ? 'air' : 'ride';
+      else if (st === 'air') key = sim.grab ? 'g' + sim.grab : this.prep > 0.5 ? 'land' : sim.air < 0.22 && rot < 2.2 ? 'pop' : rot > 2.5 ? 'spin' : sim.air > 0.12 ? 'air' : 'ride';
       else if (st === 'grind') key = 'grind';
       else if (sim.charging) key = 'charge';
       else if (braking) key = 'brake';
@@ -200,14 +241,15 @@
       if (ground && sim.landT < 0.35) hipY -= 0.26 * sim.landHard * (1 - sim.landT / 0.35);
       if (ground && sim.charging) hipY -= 0.06 * sim.charge;
       if (ground) hipY += Math.sin(this.bob) * 0.012 * (0.3 + spd) - Math.abs(this.lean) * 0.07;
+      else if (st === 'air') hipY += this.prep * 0.05;
       hipY = Math.max(0.36, hipY);
 
       /* pelvis, torso, head */
       const pelYaw = board ? -PI / 2 : 0;
       this.pelvis.position.set(0, hipY, pose.hipZ);
       this.pelvis.rotation.set(0, pelYaw, 0);
-      this.torso.rotation.set(pose.tPitch, pose.tYaw + (ground ? this.counter : 0), pose.tRoll - this.lean * 0.5, 'YXZ');
-      this.headG.rotation.set(-pose.tPitch * 0.6, pose.head + (ground ? this.headLook : 0), -this.lean * 0.25, 'YXZ');
+      this.torso.rotation.set(pose.tPitch, pose.tYaw + (ground ? this.counter : 0) + this.twist, pose.tRoll - this.lean * 0.5, 'YXZ');
+      this.headG.rotation.set(-pose.tPitch * 0.6, pose.head + (ground ? this.headLook : 0) + this.spot, -this.lean * 0.25, 'YXZ');
       this.pelvis.updateMatrix(); this.torso.updateMatrix();
 
       /* gear tweaks while grabbing */
@@ -253,7 +295,7 @@
         if (this.poles) {
           const p = this.poles[i], showPole = key !== 'crash';
           p.visible = showPole;
-          let back = key === 'tuck' ? 0.95 : key === 'air' || key === 'spin' || key === 'cheer' ? 0.5 : key.charAt(0) === 'g' ? 0.9 : 0.62;
+          let back = key === 'tuck' ? 0.95 : key === 'air' || key === 'spin' || key === 'cheer' || key === 'pop' || key === 'land' ? 0.5 : key.charAt(0) === 'g' ? 0.9 : 0.62;
           const planting = this.plant > 0 && ((i === 1) === (this.plantSide > 0));
           if (planting) back -= this.plant * 0.95;
           _c.set((i ? 0.12 : -0.12) * (key === 'tuck' ? 0.3 : 1) + (planting ? (i ? 0.2 : -0.2) * this.plant : 0),
@@ -273,7 +315,8 @@
       this.crashVel.set((rnd() - 0.3) * 9, (rnd() - 0.5) * 8, (rnd() - 0.5) * 7);
     }
   }
-  const _qa = new T.Quaternion(), _qb = new T.Quaternion();
+  const _qa = new T.Quaternion(), _qb = new T.Quaternion(), _qc = new T.Quaternion();
+  const _ax = new T.Vector3(), _eu = new T.Euler(0, 0, 0, 'YXZ');
   const _f1 = new T.Vector3(), _f2 = new T.Vector3(), _a = new T.Vector3(), _c = new T.Vector3(), _k = new T.Vector3(), _h1 = new T.Vector3(), _t1 = new T.Vector3(), _t2 = new T.Vector3();
   G.Rider = Rider;
 })();

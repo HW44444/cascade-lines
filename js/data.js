@@ -425,7 +425,7 @@
   ];
 
   /* Rough trick value of each feature, used to set score goals. */
-  G.FEATVAL = { roll: 60, rolls3: 150, hit: 260, kS: 300, kM: 560, kL: 850, kXL: 1200, rail: 320, box: 320, rainbow: 380, long: 520, drop3: 240, drop5: 380, cornice: 300, boost: 0 };
+  G.FEATVAL = { roll: 60, rolls3: 150, hit: 260, kS: 300, kM: 560, kL: 850, kXL: 1200, rail: 540, box: 500, rainbow: 640, long: 860, drop3: 240, drop5: 380, cornice: 300, boost: 0 };
 
   G.resortById = (id) => G.RESORTS.find((r) => r.id === id);
   G.runById = (resort, id) => resort.runs.find((r) => r.id === id);

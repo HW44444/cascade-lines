@@ -264,7 +264,9 @@
       const side = Math.abs(this.bodyYaw - Math.round(this.bodyYaw / PI) * PI) > PI / 4;
       gr.press = !side && Math.abs(inp.y) > 0.3 ? (inp.y < 0 ? -1 : 1) : 0;
       gr.side = side;
-      gr.pts += 320 * (side ? 1.35 : gr.press ? 1.6 : 1) * dt;
+      /* jibbing pays: a grind held, turned and pressed is worth standing up for */
+      const hold = 1 + Math.min(gr.t, 3.5) * 0.15;
+      gr.pts += 520 * (side ? 1.5 : gr.press ? 1.85 : 1) * hold * dt;
       if (side) gr.slideT += dt; else if (gr.press) { gr.pressT += dt; gr.lastPress = gr.press; } else gr.alignedT += dt;
       if (inp.jump) { this.charging = true; this.charge = Math.min(1, this.charge + dt * 2.2); }
       const release = this.charging && !inp.jump;
@@ -277,8 +279,9 @@
       if (gr.slideT >= gr.alignedT && gr.slideT >= gr.pressT) type = board ? 'Boardslide' : 'Rail Slide';
       else if (gr.pressT > gr.alignedT) type = gr.lastPress < 0 ? 'Nose Press' : 'Tail Press';
       else type = '50-50';
-      let name = (gr.onDeg >= 180 ? gr.onDeg + ' On ' : '') + type, pts = gr.pts + 60 + (gr.onDeg >= 180 ? gr.onDeg * 1.6 : 0);
-      if (r.type === 'rainbow') { name = 'Rainbow ' + name; pts *= 1.15; }
+      let name = (gr.onDeg >= 180 ? gr.onDeg + ' On ' : '') + type, pts = gr.pts + 170 + (gr.onDeg >= 180 ? gr.onDeg * 2.6 : 0);
+      if (r.type === 'rainbow') { name = 'Rainbow ' + name; pts *= 1.32; }
+      else if (r.type === 'rail') pts *= 1.12;
       if (gr.t > 0.12) this.addTrick(name, pts, false);
       this.state = 'air'; this.air = 0; this.spin = 0; this.flip = 0; this.spinV = 0; this.flipV = 0; this.grabT = {}; this.grab = 0; this.takeSw = false;
       this.vy = this.v * m + (pop ? 3.0 + 2.6 * this.charge : 0.5);
