@@ -90,7 +90,8 @@
     s += `<defs><linearGradient id="rSnow" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#dbe7f0"/></linearGradient>
       <linearGradient id="rWood" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3d7a5e"/><stop offset="1" stop-color="#255744"/></linearGradient></defs>`;
     s += `<rect x="${V[0]}" y="${V[1]}" width="${W}" height="${H}" fill="url(#rSnow)"/>`;
-    s += `<g fill="url(#rWood)" fill-rule="evenodd">` + M.forest.map((f) => `<path d="${d(f)}Z"/>`).join('') + `</g>`;
+    /* one path, so the rings cut holes in each other instead of stacking into a solid mass */
+    s += `<path fill="url(#rWood)" fill-rule="evenodd" d="${M.forest.map((f) => d(f) + 'Z').join('')}"/>`;
     s += `<g fill="none" stroke="#9fb3c4" stroke-width=".7" opacity=".5">` + M.cont.map((c) => `<path d="${d(c.p)}"/>`).join('') + `</g>`;
     s += `<g fill="none" stroke="#17242d" stroke-width="1.4" stroke-dasharray="7 5" opacity=".45">` + M.bound.map((b) => `<path d="${d(b)}Z"/>`).join('') + `</g>`;
     /* every surveyed trail, then the playable ones picked out on top */
