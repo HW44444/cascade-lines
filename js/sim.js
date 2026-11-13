@@ -68,7 +68,7 @@
       this.s = -9; this.x = 0; this.y = r.height(-9, 0); this.v = 0; this.th = 0; this.vy = 0;
       this.state = 'ready'; this.bodyYaw = 0; this.spin = 0; this.flip = 0; this.spinV = 0; this.flipV = 0; this.flipDir = 1; this.sw = false;
       this.air = 0; this.t = 0; this.score = 0; this.boost = 0.5; this.boosting = false; this.charge = 0; this.charging = false;
-      this.grab = 0; this.grabT = {}; this.rail = null; this.grind = null; this.crashT = 0; this.inv = 0; this.counts = {};
+      this.grab = 0; this.autoG = 0; this.grabT = {}; this.rail = null; this.grind = null; this.crashT = 0; this.inv = 0; this.counts = {};
       this.chain = { pts: 0, n: 0, timer: 0, last: '' };
       this.finished = false; this.finishTime = 0; this.maxV = 0; this.airTotal = 0; this.tricks = 0; this.crashes = 0; this.bestChain = 0; this.bestTrick = null;
       this.steer = 0; this.braking = false; this.tuck = false; this.slope = 0; this.gns = 0; this.gnx = 0; this.takeSw = false; this.clear = 0; this.landT = 9; this.landHard = 0;
@@ -163,7 +163,7 @@
 
     toAir() {
       this.state = 'air'; this.air = 0; this.spin = 0; this.flip = 0; this.spinV = 0; this.flipV = 0;
-      this.grab = 0; this.grabT = {}; this.takeSw = this.sw; this.emit('takeoff');
+      this.grab = 0; this.autoG = 0; this.grabT = {}; this.takeSw = this.sw; this.emit('takeoff');
     }
 
     stepAir(dt, inp) {
@@ -181,7 +181,15 @@
       const ix = this.finished ? 0 : inp.x, iy = this.finished ? 0 : inp.y;
       const sr = SPIN * (this.gear === 'board' ? 1.06 : 1);
       if (Math.abs(ix) > 0.25) this.spinV = G.damp(this.spinV, ix * sr, 16, dt);
-      else this.spinV = G.clamp((Math.round(this.bodyYaw / PI) * PI - this.bodyYaw) * 9, -sr, sr);   // settle to the nearest clean landing
+      else {
+        /* Sticks released: swing round to parallel with the way you are travelling - normal or
+           switch, whichever is nearer - at the ordinary spin rate, easing off only over the last
+           stretch. bodyYaw is measured off the velocity, so zero means the skis point where you
+           are going. Let go too late and the snow arrives while you are still crossed up. */
+        const stop = this.bodyYaw + this.spinV * 0.15;                  /* where the rotation would coast to */
+        const err = Math.round(stop / PI) * PI - this.bodyYaw;          /* finish the turn rather than fight it back */
+        this.spinV = G.damp(this.spinV, G.clamp(err * 4.4, -sr, sr), 10, dt);
+      }
       if (Math.abs(iy) > 0.25) { this.flipV = G.damp(this.flipV, iy * FLIP, 16, dt); this.flipDir = iy > 0 ? 1 : -1; }
       else {
         const err = Math.round(this.flip / TAU) * TAU - this.flip;
@@ -192,7 +200,11 @@
       this.bodyYaw += dy; this.spin += dy; this.flip += this.flipV * dt;
 
       const gk = this.finished ? 0 : inp.grab;
-      if (gk && this.air > 0.1) { this.grab = gk; this.grabT[gk] = (this.grabT[gk] || 0) + dt; } else this.grab = 0;
+      if (gk && this.air > 0.1) {
+        let g = gk;
+        if (g < 0) g = this.autoG || (this.autoG = this.fitGrab());    /* E: whatever suits the trick */
+        this.grab = g; this.grabT[g] = (this.grabT[g] || 0) + dt;
+      } else { this.grab = 0; if (!gk) this.autoG = 0; }
 
       if (this.gates.length) this.checkGates(prevS, prevX);
       const hN = run.height(this.s, this.x);
@@ -201,12 +213,20 @@
       if (this.y <= hN) this.land(hN);
     }
 
+    /* Pressing E reaches for a grab that suits the rotation you are in the middle of. */
+    fitGrab() {
+      const sp = Math.abs(this.spinV), fl = this.flipV, r = Math.random();
+      if (fl > 2.2) return r < 0.72 ? 4 : 1;        /* front flip: over the nose */
+      if (fl < -2.2) return r < 0.72 ? 3 : 2;       /* back flip: tail, or a safety */
+      if (sp > 4.5) return r < 0.62 ? 1 : 2;        /* big spin: mute or melon */
+      return 1 + ((r * 4) | 0);
+    }
     land(hN) {
       const run = this.run, e = 0.6, c = Math.cos(this.th), sn = Math.sin(this.th);
       const m = (run.height(this.s + e * c, this.x + e * sn) - run.height(this.s - e * c, this.x - e * sn)) / (2 * e);
       const vn = (this.vy - this.v * m) / Math.sqrt(1 + m * m);
       this.y = hN;
-      const yawErr = Math.abs(this.bodyYaw - Math.round(this.bodyYaw / PI) * PI);
+      const yawErr = Math.abs(this.bodyYaw - Math.round(this.bodyYaw / PI) * PI);   /* off the direction of travel */
       const flipErr = Math.abs(G.wrapPi(this.flip));
       const trivial = this.air < 0.28 && Math.abs(this.spin) < 0.5 && Math.abs(this.flip) < 0.5;
       const deep = this.run.powAt(this.s);                      /* knee-deep snow absorbs a bad landing */
@@ -223,7 +243,7 @@
         this.landT = 0; this.landHard = Math.min(1, Math.abs(vn) / 18);
         this.v *= sketchy ? 0.78 : 1 - Math.min(0.08, Math.abs(vn) * 0.004);
       }
-      this.flip = 0; this.spin = 0; this.spinV = 0; this.flipV = 0; this.grab = 0;
+      this.flip = 0; this.spin = 0; this.spinV = 0; this.flipV = 0; this.grab = 0; this.autoG = 0;
       this.state = 'ground'; this.vy = this.v * m; this.charging = false; this.charge = 0;
     }
 
@@ -283,7 +303,7 @@
       if (r.type === 'rainbow') { name = 'Rainbow ' + name; pts *= 1.32; }
       else if (r.type === 'rail') pts *= 1.12;
       if (gr.t > 0.12) this.addTrick(name, pts, false);
-      this.state = 'air'; this.air = 0; this.spin = 0; this.flip = 0; this.spinV = 0; this.flipV = 0; this.grabT = {}; this.grab = 0; this.takeSw = false;
+      this.state = 'air'; this.air = 0; this.spin = 0; this.flip = 0; this.spinV = 0; this.flipV = 0; this.grabT = {}; this.grab = 0; this.autoG = 0; this.takeSw = false;
       this.vy = this.v * m + (pop ? 3.0 + 2.6 * this.charge : 0.5);
       this.charging = false; this.charge = 0; this.rail = null; this.grind = null;
       this.emit('grindEnd', { pop });

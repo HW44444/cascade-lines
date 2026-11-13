@@ -186,7 +186,6 @@ body.ko::after{content:"";position:fixed;inset:0;pointer-events:none;background:
 .pbtn:hover{background:#fff}
 .pbtn svg{width:18px;height:18px;fill:none;stroke:#17242d;stroke-width:2;stroke-linejoin:round}
 .bl{position:absolute;left:14px;bottom:14px;display:flex;align-items:flex-end;gap:9px}
-.compass{width:54px;height:54px;border-radius:50%;background:var(--card);box-shadow:var(--sh),inset 0 0 0 4px #fff,inset 0 0 0 6px var(--signal);display:grid;place-items:center;font-weight:800;font-size:15px}
 .speedc{padding:8px 16px 9px}
 .speedc div{display:flex;align-items:baseline;gap:6px}
 #hudSpeed{font-weight:800;font-size:40px;line-height:1;min-width:1.25em;text-align:right}
@@ -222,6 +221,7 @@ body.boosting #streaks{opacity:1}
 .tbtns button{height:42px;border-radius:12px;background:rgba(255,255,255,.88);color:#17242d;box-shadow:0 3px 10px rgba(23,36,45,.25);font-family:var(--body);font-weight:700;font-size:12.5px}
 .tbtns button.on{background:#17242d;color:#fff}
 .tbtns .half{grid-column:span 2;height:56px;font-size:17px}
+.tbtns .full{grid-column:span 4;height:44px;font-size:15px}
 .tbtns .jump{background:var(--signal);color:#fff}
 
 /* overlays */
@@ -248,7 +248,7 @@ table.res .new{color:var(--signal);font-size:11px;letter-spacing:.1em;text-trans
 #nogl{position:fixed;inset:0;display:grid;place-items:center;padding:24px;text-align:center;background:var(--ink)}
 
 @media (pointer:coarse){
-  .compass,#hudHint{display:none}
+  #hudHint{display:none}
   .goalsc{font-size:11.5px;padding:6px 9px}
   .bl{left:50%;bottom:54px;transform:translateX(-50%)}
   .bc{width:min(30vw,260px);bottom:10px}
@@ -310,12 +310,11 @@ table.res .new{color:var(--signal);font-size:11px;letter-spacing:.1em;text-trans
     <button class="pill pbtn" id="hudMap"><svg viewBox="0 0 24 24"><path d="M3 6.5 9 4l6 2.5L21 4v13.5L15 20l-6-2.5L3 20zM9 4v13.5M15 6.5V20"/></svg>Trail map</button>
   </div>
   <div class="bl">
-    <div class="compass"><span id="hudDir">E</span></div>
     <div class="pill pow" id="hudPow" hidden>Powder</div>
     <div class="hcard speedc"><div><span id="hudSpeed" class="num">0</span><span id="hudUnit">mph</span></div><small id="hudElev" class="num"></small></div>
   </div>
   <div class="bc">
-    <div id="hudHint" class="pill">In the air: hold ← → to spin, ↑ ↓ to flip, J K L I to grab. Let go before you land.</div>
+    <div id="hudHint" class="pill">In the air: hold ← → to spin, ↑ ↓ to flip, E to grab. Let go in time to come round straight.</div>
     <div class="pill boostp" id="boostWrapP"><span>Boost</span><div id="boostWrap"><div id="boostFill"></div></div><kbd>Shift</kbd></div>
   </div>
 </div>
@@ -324,8 +323,7 @@ table.res .new{color:var(--signal);font-size:11px;letter-spacing:.1em;text-trans
 <div id="touch" hidden>
   <div id="stick"><div class="ring"><div id="nub"></div></div></div>
   <div class="tbtns">
-    <button data-touch="g1" data-grabname="1">Mute</button><button data-touch="g2" data-grabname="2">Safety</button>
-    <button data-touch="g3" data-grabname="3">Tail</button><button data-touch="g4" data-grabname="4">Japan</button>
+    <button class="full" data-touch="g0">Grab</button>
     <button class="half" data-touch="boost">Boost</button><button class="half jump" data-touch="jump">Jump</button>
   </div>
 </div>
@@ -358,7 +356,7 @@ table.res .new{color:var(--signal);font-size:11px;letter-spacing:.1em;text-trans
         <tr><th>Brake · back flip</th><td><kbd>↓</kbd> or <kbd>S</kbd></td></tr>
         <tr><th>Jump (hold to charge)</th><td><kbd>Space</kbd></td></tr>
         <tr><th>Boost</th><td><kbd>Shift</kbd></td></tr>
-        <tr><th>Grabs (hold in the air)</th><td><kbd>J</kbd><kbd>K</kbd><kbd>L</kbd><kbd>I</kbd></td></tr>
+        <tr><th>Grab (hold in the air)</th><td><kbd>E</kbd></td></tr>
         <tr><th>Trail map · pause · restart</th><td><kbd>M</kbd><kbd>Esc</kbd><kbd>R</kbd></td></tr>
       </table>
     </aside>
@@ -407,7 +405,7 @@ table.res .new{color:var(--signal);font-size:11px;letter-spacing:.1em;text-trans
       <tr><th>Brake · back flip</th><td><kbd>↓</kbd> or <kbd>S</kbd></td></tr>
       <tr><th>Jump (hold to charge)</th><td><kbd>Space</kbd></td></tr>
       <tr><th>Boost</th><td><kbd>Shift</kbd></td></tr>
-      <tr><th id="grabHelp">Grabs</th><td><kbd>J</kbd><kbd>K</kbd><kbd>L</kbd><kbd>I</kbd></td></tr>
+      <tr><th id="grabHelp">Grabs</th><td><kbd>E</kbd></td></tr>
       <tr><th>On a rail: turn sideways · press</th><td><kbd>←</kbd><kbd>→</kbd> · <kbd>↑</kbd><kbd>↓</kbd></td></tr>
       <tr><th>Trail map · mute</th><td><kbd>M</kbd> · <kbd>N</kbd></td></tr>
     </table>

@@ -171,7 +171,7 @@
           const act = b.dataset.touch;
           const set = (v) => {
             if (act === 'jump') this.touch.jump = v; else if (act === 'boost') this.touch.boost = v;
-            else if (act.charAt(0) === 'g') this.touch.grab = v ? +act.charAt(1) : 0;
+            else if (act.charAt(0) === 'g') this.touch.grab = v ? (act === 'g0' ? -1 : +act.charAt(1)) : 0;
             b.classList.toggle('on', v);
           };
           b.addEventListener('pointerdown', (e) => {
@@ -190,7 +190,7 @@
       i.y = G.clamp((k.ArrowDown || k.KeyS ? 1 : 0) - (k.ArrowUp || k.KeyW ? 1 : 0) + t.y, -1, 1);
       i.jump = !!k.Space || t.jump;
       i.boost = !!(k.ShiftLeft || k.ShiftRight) || t.boost;
-      i.grab = k.KeyJ || k.KeyZ ? 1 : k.KeyK || k.KeyX ? 2 : k.KeyL || k.KeyC ? 3 : k.KeyI || k.KeyV ? 4 : t.grab;
+      i.grab = k.KeyE ? -1 : k.KeyJ || k.KeyZ ? 1 : k.KeyK || k.KeyX ? 2 : k.KeyL || k.KeyC ? 3 : k.KeyI || k.KeyV ? 4 : t.grab;
     }
     togglePause() {
       if (this.mode === 'paused') { this.mode = this.pausedFrom || 'play'; G.UI.hidePause(); this.last = performance.now(); }
@@ -350,8 +350,6 @@
       const elev = d.elev[0] - (d.elev[0] - d.elev[1]) * frac;
       this.setText('hudElev', G.fmt(Math.round(elev / 5) * 5) + ' ft');
       this.setText('progFt', G.fmt(Math.max(0, Math.round((elev - d.elev[1]) / 10) * 10)) + ' ft to go');
-      const brg = ((((this.resort.aspect || 0) + ((run.psiAt(sim.s) + sim.th) * 180) / Math.PI) % 360) + 360) % 360;
-      this.setText('hudDir', ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(brg / 45) % 8]);
       const ch = sim.chain, has = ch.n > 0;
       if (this.hudCache.has !== has) { this.hudCache.has = has; $('hudChain').hidden = !has; }
       const multOn = has && ch.n > 1;

@@ -272,7 +272,7 @@
     document.querySelectorAll('[data-look]').forEach((b) => b.setAttribute('aria-pressed', String(+b.dataset.look === d.look)));
     const snd = 'Sound ' + (d.sound ? 'on' : 'off'), un = 'Speed in ' + (d.units === 'kmh' ? 'km/h' : 'mph'), q = 'Graphics: ' + d.quality;
     $('btnSound').textContent = snd; $('pSound').textContent = snd; $('btnUnits').textContent = un; $('pUnits').textContent = un; $('btnQuality').textContent = q; $('pQuality').textContent = q;
-    const gn = G.GRABS[d.gear]; $('grabHelp').textContent = `Grabs: ${gn[1]} · ${gn[2]} · ${gn[3]} · ${gn[4]}`;
+    const gn = G.GRABS[d.gear]; $('grabHelp').textContent = `Grab (${gn[1]}, ${gn[2]}, ${gn[3]}, ${gn[4]})`;
   };
   UI.toggleSound = function () { Save.data.sound = !Save.data.sound; Save.write(); G.Audio.setOn(Save.data.sound); UI.syncTitle(); };
   UI.toggleUnits = function () { Save.data.units = Save.data.units === 'kmh' ? 'mph' : 'kmh'; Save.write(); UI.syncTitle(); };
