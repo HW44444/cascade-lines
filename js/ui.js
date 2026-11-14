@@ -261,6 +261,11 @@
       const c = e.target.closest('[data-cond]');
       if (c) { G.Audio.click(); Save.data[c.dataset.cond] = c.dataset.val; Save.write(); UI.renderSel(); }
     });
+    $('pConds').addEventListener('click', (e) => {
+      const c = e.target.closest('[data-cond]'); if (!c) return;
+      G.Audio.click(); Save.data[c.dataset.cond] = c.dataset.val; Save.write();
+      UI.renderPauseConds(); if (UI.game) UI.game.relight();
+    });
     $('pResume').addEventListener('click', () => game.togglePause());
     $('pRestart').addEventListener('click', () => { UI.hideOverlays(); game.restart(); });
     $('pMap').addEventListener('click', () => UI.backToMap());
@@ -307,7 +312,16 @@
   };
   UI.hideScreens = function () { ['title', 'resorts', 'map', 'shop'].forEach((n) => { $('s-' + n).hidden = true; }); };
   UI.hideOverlays = function () { $('pause').hidden = true; $('results').hidden = true; };
-  UI.showPause = function () { $('pauseSub').textContent = UI.game.def.name + ' · ' + UI.game.resort.name; $('pause').hidden = false; };
+  UI.showPause = function () {
+    $('pauseSub').textContent = UI.game.def.name + ' \u00b7 ' + UI.game.resort.name;
+    UI.renderPauseConds(); $('pause').hidden = false;
+  };
+  UI.renderPauseConds = function () {
+    const d = UI.game && UI.game.def; if (!d) return;
+    $('pConds').innerHTML =
+      `<div class="condrow"><span>Time</span><div>${picker('time', G.TIME, d)}</div></div>` +
+      `<div class="condrow"><span>Weather</span><div>${picker('wx', G.WX, d)}</div></div>`;
+  };
   UI.hidePause = function () { $('pause').hidden = true; };
   UI.backToMap = function () { UI.resort = UI.game.resort; UI.runId = UI.game.def.id; UI.show('map'); };
 

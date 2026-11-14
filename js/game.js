@@ -81,6 +81,29 @@
     }
 
     /* ---------- loading ---------- */
+    /* Swap the light and the weather under a run already in progress. The
+       terrain is identical in every condition - lamp posts are props, not
+       colliders - so the sim carries straight on and the clock never stops. */
+    relight() {
+      if (!this.world || this.mode === 'attract') return this.world && this.load(this.resort, this.def, 'attract');
+      const sim = this.sim, was = this.run;
+      const run = (this.run = G.getRun(this.resort, this.def));
+      if (run !== was) {   /* night swaps in the lamp-post build; carry the collected orbs over */
+        const taken = {}; was.orbs.forEach((o) => { if (o.taken) taken[Math.round(o.s * 10) + ':' + Math.round(o.x * 10)] = 1; });
+        run.orbs.forEach((o) => { o.taken = !!taken[Math.round(o.s * 10) + ':' + Math.round(o.x * 10)]; });
+        sim.run = run;
+      }
+      this.world.dispose();
+      if (this.parts) this.parts.dispose();
+      if (this.tracks) this.tracks.dispose();
+      this.world = new G.World(run, this.renderer, this.quality);
+      this.night = !!this.world.sky.night;
+      this.world.scene.add(this.rider.root);
+      this.parts = new G.Particles(this.world.scene, 700);
+      this.tracks = new G.Tracks(this.world.scene, G.Save.data.gear === 'ski' ? 2 : 1, this.night);
+      for (const m of this.world.orbMeshes) if (m.userData.o.taken) { m.visible = false; }
+      this.resize();
+    }
     unload() {
       document.body.classList.remove('ko');
       if (this.world) { this.world.dispose(); this.world = null; }
