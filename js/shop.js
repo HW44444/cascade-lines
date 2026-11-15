@@ -8,20 +8,21 @@
      kit is purely a look and every star time stays comparable. */
   const E0 = { speed: 0, grip: 0 };
   const it = (id, name, price, color, extra) => Object.assign({ id, name, price, color, eff: E0 }, extra || {});
+  const eff = (speed, grip) => ({ speed, grip });
 
   G.SHOP = {
     gear: { name: 'Skis / board', items: [
       it('rental', 'Rental', 0, '#ffc233', { tier: 'Rental' }),
-      it('sport', 'Cascade Sport', 1800, '#3ad1a0', { tier: 'Sport' }),
-      it('pro', 'Hood Pro', 4500, '#ff5b1f', { tier: 'Pro' }),
-      it('team', 'Team Issue', 9000, '#111418', { tier: 'Team' }),
-      it('gold', 'Gold Edition', 14000, '#e8b53c', { tier: 'Team' }),
+      it('sport', 'Cascade Sport', 1800, '#3ad1a0', { tier: 'Sport', eff: eff(0.014, 0.03) }),
+      it('pro', 'Hood Pro', 4500, '#ff5b1f', { tier: 'Pro', eff: eff(0.028, 0.06) }),
+      it('team', 'Team Issue', 9000, '#111418', { tier: 'Team', eff: eff(0.042, 0.09) }),
+      it('gold', 'Gold Edition', 14000, '#e8b53c', { tier: 'Team', eff: eff(0.042, 0.09) }),
     ] },
     poles: { name: 'Poles', items: [
       it('alu', 'Aluminium', 0, '#15191d'),
-      it('carbon', 'Carbon', 900, '#2b3440'),
-      it('race', 'Race', 1800, '#d8342a'),
-      it('bamboo', 'Bamboo', 1200, '#c8a35c'),
+      it('carbon', 'Carbon', 900, '#2b3440', { eff: eff(0.006, 0.01) }),
+      it('race', 'Race', 1800, '#d8342a', { eff: eff(0.012, 0.02) }),
+      it('bamboo', 'Bamboo', 1200, '#c8a35c', { eff: eff(0.009, 0.015) }),
     ] },
     head: { name: 'Head', items: [
       it('helm-white', 'White helmet', 0, '#f4f4f1', { hat: 'helmet' }),
@@ -86,6 +87,21 @@
       pom: head ? head.pom : null,
       pack: pk && pk.color ? pk.color : null,
     };
+  };
+
+  /* What the kit adds up to. Small on purpose: top gear is worth about 4% of
+     top speed, enough to be the thing that finally lands a hard three-star,
+     not enough to make an easy one of a hard run. Par times are computed
+     without it, so every goal means the same thing it always did. */
+  G.gearEff = function () {
+    const kit = (G.Save.data && G.Save.data.kit) || {};
+    let speed = 0, grip = 0;
+    for (const slot of G.SLOTS) {
+      const id = kit[slot]; if (!id || !G.owns(slot, id)) continue;
+      const e = (G.shopItem(slot, id) || {}).eff; if (!e) continue;
+      speed += e.speed || 0; grip += e.grip || 0;
+    }
+    return { speed: Math.min(speed, 0.06), grip: Math.min(grip, 0.12) };
   };
 
   G.Wallet = {

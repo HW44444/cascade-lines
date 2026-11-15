@@ -367,6 +367,11 @@
       this.setText('hudUnit', mph ? 'mph' : 'km/h');
       const b = Math.round(sim.boost * 100);
       if (this.hudCache.boost !== b) { this.hudCache.boost = b; $('boostFill').style.transform = `scaleX(${b / 100})`; }
+      const gm = Math.round(G.clamp(sim.gmeter, 0, 1) * 50);
+      if (this.hudCache.gm !== gm) {
+        this.hudCache.gm = gm; $('gBar').hidden = gm <= 0;
+        $('gFill').style.transform = `scaleX(${gm / 50})`;
+      }
       const bo = sim.boosting; if (this.hudCache.bo !== bo) { this.hudCache.bo = bo; $('boostWrapP').classList.toggle('on', bo); document.body.classList.toggle('boosting', bo); }
       /* elevation: the run's real top and bottom, spread over the drop ridden so far */
       const p = this.prof, frac = p ? G.clamp((p.e0 - run.height(Math.min(sim.s, run.finishS), 0)) / (p.e0 - p.e1), 0, 1) : 0;
@@ -472,6 +477,7 @@
         switch (e.type) {
           case 'takeoff': this.tracks.lift(); break;
           case 'pop': if (play) A.pop(); break;
+          case 'noheight': if (play) this.msg('Not enough height'); break;
           case 'land': this.shake = Math.max(this.shake, G.clamp(-e.vn / 22, 0.15, 1)); this.burst(26, 4 + Math.min(6, -e.vn * 0.4)); if (play) A.land(G.clamp(-e.vn / 20, 0, 1)); break;
           case 'trick': if (play) { this.popTrick(e); A.trick(e.n); if (!G.Save.data.seenHint) { G.Save.data.seenHint = true; G.Save.write(); $('hudHint').hidden = true; } } break;
           case 'bank': if (play) { const el = $('hudScore'); el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); if (e.n > 1) { this.msg(e.n + ' trick combo  +' + G.fmt(e.gain), 'good'); A.bank(); } } break;

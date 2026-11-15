@@ -60,6 +60,8 @@
   class Sim {
     constructor(run, gear, opts) {
       this.run = run; this.gear = gear || 'ski'; this.ghost = !!(opts && opts.ghost); this.events = [];
+      this.safety = !this.ghost && !(G.Save && G.Save.data.safety === false);   /* trick safety, on unless turned off */
+      this.eff = this.ghost || !G.gearEff ? { speed: 0, grip: 0 } : G.gearEff();   /* par times are ridden on rentals */
       this.reset();
     }
     emit(type, data) { const e = data || {}; e.type = type; this.events.push(e); }
@@ -68,6 +70,7 @@
       this.s = -9; this.x = 0; this.y = r.height(-9, 0); this.v = 0; this.th = 0; this.vy = 0;
       this.state = 'ready'; this.bodyYaw = 0; this.spin = 0; this.flip = 0; this.spinV = 0; this.flipV = 0; this.flipDir = 1; this.sw = false;
       this.air = 0; this.t = 0; this.score = 0; this.boost = 0.5; this.boosting = false; this.charge = 0; this.charging = false;
+      this.preSteer = 0; this.spinCap = 0; this.gmeter = 0; this.noHeight = 0;
       this.grab = 0; this.autoG = 0; this.grabT = {}; this.rail = null; this.grind = null; this.crashT = 0; this.inv = 0; this.counts = {};
       this.chain = { pts: 0, n: 0, timer: 0, last: '' };
       this.finished = false; this.finishTime = 0; this.maxV = 0; this.airTotal = 0; this.tricks = 0; this.crashes = 0; this.bestChain = 0; this.bestTrick = null;
@@ -95,6 +98,7 @@
       if (!this.finished && this.s >= this.run.finishS) { this.finished = true; this.finishTime = this.t + this.penalty; this.emit('finish'); }
       if (this.finished && this.chain.n && this.state === 'ground') this.bank();
       if (this.v > this.maxV) this.maxV = this.v;
+      if (this.gmeter > 0) this.gmeter = Math.max(0, this.gmeter - dt * 0.34);   /* the legs recover */
     }
 
     stepGround(dt, inp) {
@@ -106,7 +110,7 @@
       this.braking = braking; this.tuck = tuck;
       this.steer = G.damp(this.steer, ix, 9, dt);
       const sp = G.clamp(this.v / 34, 0, 1);
-      this.th += G.lerp(2.35, 0.9, sp) * this.steer * (braking ? 1.25 : 1) * (tuck ? 0.72 : 1) * dt;
+      this.th += G.lerp(2.35, 0.9, sp) * (1 + this.eff.grip) * this.steer * (braking ? 1.25 : 1) * (tuck ? 0.72 : 1) * dt;
 
       const e = 0.6, s = this.s, x = this.x;
       const gs = (run.height(s + e, x) - run.height(s - e, x)) / (2 * e) / jac;
@@ -124,13 +128,13 @@
       const off = Math.max(0, Math.abs(x) - run.hwAt(s)), sc = run.secAt(s);
       const pw = (this.pw = run.powAt(s));
       this.sink = G.damp(this.sink, pw * 0.26, 6, dt);
-      const mu = 0.034 + pw * 0.017 + Math.min(off, 6) * 0.035;
+      const mu = (0.034 + pw * 0.017 + Math.min(off, 6) * 0.035) * (1 - this.eff.speed * 0.85);
       let drag = (tuck ? 0.003 : 0.0042) * this.v * this.v;
       if (sc.mog) drag += 0.004 * this.v * this.v;
       if (this.v > 36) drag += 0.03 * (this.v - 36) * (this.v - 36);
       if (braking) a -= 6 + 0.14 * this.v;
       if (this.boosting) { a += 6; drag *= 0.8; }
-      a -= mu * g + drag + 0.0019 * Math.abs(this.steer) * this.v * this.v;
+      a -= mu * g + drag + 0.0019 * (1 - this.eff.grip * 1.6) * Math.abs(this.steer) * this.v * this.v;   /* better edges scrub less speed in a turn */
       /* poling and skating: a push at low speed so mellow pitches still get moving */
       if (!braking && !this.finished && this.v < 15) a += (tuck ? 3.4 : 2.0) * (1 - this.v / 15);
       this.v += a * dt; if (this.v < 0) this.v = 0;
@@ -143,6 +147,11 @@
       if (this.gates.length) this.checkGates(prevS, prevX);
 
       if (jump && !this.finished) { this.charging = true; this.charge = Math.min(1, this.charge + dt * 1.7); }
+      /* Winding a spin up BEFORE the lip is what buys a fast one, the way the
+         stick deflection does in Steep. Leave it until you are in the air and
+         you get a lazy rotation instead. */
+      if (Math.abs(ix) > 0.25 && (this.charging || this.air < 0.12)) this.preSteer = G.clamp(this.preSteer + ix * dt, -0.42, 0.42);
+      else this.preSteer = G.damp(this.preSteer, 0, 2.6, dt);
       const hN = run.height(this.s, this.x);
       const cs = Math.cos(this.th), ss = Math.sin(this.th);
       const mB = (hN - run.height(this.s - 2 * cs, this.x - 2 * ss)) / 2;
@@ -163,7 +172,26 @@
 
     toAir() {
       this.state = 'air'; this.air = 0; this.spin = 0; this.flip = 0; this.spinV = 0; this.flipV = 0;
-      this.grab = 0; this.autoG = 0; this.grabT = {}; this.takeSw = this.sw; this.emit('takeoff');
+      this.grab = 0; this.autoG = 0; this.grabT = {}; this.takeSw = this.sw;
+      this.spinCap = Math.abs(this.preSteer) / 0.42;   /* 0 to 1, latched for this air */
+      this.preSteer = 0;
+      this.emit('takeoff');
+    }
+
+    /* The gradient of the snow along the way the rider is travelling. */
+    slopeAt(s, x) {
+      const e = 0.6, c = Math.cos(this.th), sn = Math.sin(this.th), run = this.run;
+      return (run.height(s + e * c, x + e * sn) - run.height(s - e * c, x - e * sn)) / (2 * e);
+    }
+
+    /* Roughly how long until the snow. The ground is falling away underneath at
+       v*slope, which on anything steep is most of the answer - measure against
+       flat ground and a long skimming air reads as about to land the whole way
+       down. */
+    timeToLand() {
+      const h = Math.max(0, this.y - this.run.height(this.s, this.x));
+      const vrel = this.vy - this.v * this.slopeAt(this.s, this.x);
+      return (vrel + Math.sqrt(Math.max(0, vrel * vrel + 2 * g * h))) / g;
     }
 
     stepAir(dt, inp) {
@@ -172,21 +200,50 @@
       this.sink = G.damp(this.sink, 0, 9, dt);
       const prevS = this.s, prevX = this.x;
       this.vy -= g * dt; this.y += this.vy * dt;
-      this.v -= 0.0009 * this.v * this.v * dt; if (this.boosting && this.v < 38) this.v += 3 * dt;
+      this.v -= 0.0009 * (1 - this.eff.speed) * this.v * this.v * dt; if (this.boosting && this.v < 38) this.v += 3 * dt;
       const k = run.kapAt(this.s), jac = Math.max(0.35, 1 - k * this.x);
       const ds = (this.v * Math.cos(this.th) * dt) / jac;
       this.s += ds; this.x += this.v * Math.sin(this.th) * dt; this.th -= k * ds;
       if (this.s > run.L - 14) { this.s = run.L - 14; this.v = 0; }
 
-      const ix = this.finished ? 0 : inp.x, iy = this.finished ? 0 : inp.y;
+      let ix = this.finished ? 0 : inp.x, iy = this.finished ? 0 : inp.y;
       const sr = SPIN * (this.gear === 'board' ? 1.06 : 1);
-      if (Math.abs(ix) > 0.25) this.spinV = G.damp(this.spinV, ix * sr, 16, dt);
-      else this.spinV = G.clamp((Math.round(this.bodyYaw / PI) * PI - this.bodyYaw) * 9, -sr, sr);   // settle to the nearest clean landing
-      if (Math.abs(iy) > 0.25) { this.flipV = G.damp(this.flipV, iy * FLIP, 16, dt); this.flipDir = iy > 0 ? 1 : -1; }
-      else {
+      const tLand = this.timeToLand();
+
+      /* Trick safety, on by default: below a certain height the game simply
+         will not start a rotation for you, rather than let you commit to one
+         you cannot finish. Turn it off for more rope close to the ground. */
+      if (this.safety && !this.spin && !this.flip && tLand < 0.42 && (ix || iy)) {
+        ix = 0; iy = 0;
+        if (this.air > 0.06 && this.noHeight <= 0) { this.noHeight = 1.2; this.emit('noheight'); }
+      }
+      if (this.noHeight > 0) this.noHeight -= dt;
+
+      /* Rotation authority: weak at the apex, firm as the ground comes up. A
+         released spin keeps most of its momentum up high and is only hauled
+         round to a landing once there is a landing to haul it round to. */
+      const auth = G.clamp(1 - tLand / 0.95, 0, 1);
+
+      if (Math.abs(ix) > 0.25) {
+        /* The cap latched at takeoff sets how hard this one goes round. */
+        const rate = sr * (0.42 + 0.58 * this.spinCap);
+        this.spinV = G.damp(this.spinV, ix * rate, 16, dt);
+      } else {
+        const stop = this.bodyYaw + this.spinV * 0.15;
+        const err = Math.round(stop / PI) * PI - this.bodyYaw;
+        const corr = G.clamp(err * 4.4, -sr, sr);
+        const want = G.lerp(this.spinV * 0.9, corr, auth);        /* momentum carries; the pull grows */
+        this.spinV = G.damp(this.spinV, want, 5 + 11 * auth, dt);
+      }
+
+      if (Math.abs(iy) > 0.25) {
+        const rate = FLIP * (0.5 + 0.5 * this.spinCap);
+        this.flipV = G.damp(this.flipV, iy * rate, 16, dt); this.flipDir = iy > 0 ? 1 : -1;
+      } else {
         const err = Math.round(this.flip / TAU) * TAU - this.flip;
-        if (Math.abs(err) < 0.9) this.flipV = G.clamp(err * 9, -FLIP, FLIP);
-        else this.flipV = G.damp(this.flipV, this.flipDir * FLIP * 0.75, 10, dt);                      // carry a released flip round
+        const corr = Math.abs(err) < 1.1 ? G.clamp(err * 7, -FLIP, FLIP) : this.flipDir * FLIP * 0.7;
+        const want = G.lerp(this.flipV * 0.92, corr, auth);
+        this.flipV = G.damp(this.flipV, want, 5 + 9 * auth, dt);
       }
       const dy = this.spinV * dt;
       this.bodyYaw += dy; this.spin += dy; this.flip += this.flipV * dt;
@@ -222,11 +279,22 @@
       const flipErr = Math.abs(G.wrapPi(this.flip));
       const trivial = this.air < 0.28 && Math.abs(this.spin) < 0.5 && Math.abs(this.flip) < 0.5;
       const deep = this.run.powAt(this.s);                      /* knee-deep snow absorbs a bad landing */
+
+      /* Landings are not graded pass or fail. Each one puts load into a meter
+         that bleeds off over a few seconds, so one ugly touchdown is survivable
+         and three in a row are not - which is how a bad run actually ends. */
       const yawLim = 0.95 + deep * 0.5, flipLim = 1.0 + deep * 0.55, vnLim = -30 - deep * 14;
-      if (!this.ghost && !trivial && (yawErr > yawLim || flipErr > flipLim || vn < vnLim)) {
-        this.crash(flipErr > flipLim ? 'Over-rotated' : yawErr > yawLim ? 'Landed sideways' : 'Too much air'); return;
+      const load = Math.max(0, yawErr / yawLim - 0.42) * 1.5
+        + Math.max(0, flipErr / flipLim - 0.42) * 1.6
+        + Math.max(0, vn / vnLim - 0.5) * 1.35
+        + Math.max(0, this.air - 1.5) * 0.22;
+      if (!trivial) this.gmeter += load;
+      const blown = yawErr > yawLim * 1.5 || flipErr > flipLim * 1.5 || vn < vnLim * 1.45;
+      if (!this.ghost && !trivial && (this.gmeter >= 1 || blown)) {
+        this.gmeter = 0;
+        this.crash(flipErr > flipLim * 0.8 ? 'Over-rotated' : yawErr > yawLim * 0.8 ? 'Landed sideways' : 'Too much to absorb'); return;
       }
-      const sketchy = !trivial && (yawErr > 0.5 + deep * 0.35 || flipErr > 0.55 + deep * 0.3 || vn < -22 - deep * 10);
+      const sketchy = !trivial && (load > 0.12 || this.gmeter > 0.4);
       this.sw = Math.abs(Math.round(this.bodyYaw / PI)) % 2 === 1;
       this.bodyYaw = this.sw ? PI : 0;
       if (!trivial) {
@@ -306,7 +374,7 @@
       if (this.chain.n) this.emit('lost', { pts: this.chain.pts });
       this.chain = { pts: 0, n: 0, timer: 0, last: '' };
       this.state = 'crash'; this.crashT = hold || 1.5; this.crashes++; this.ko = !!hold; this.boost = Math.max(0, this.boost - 0.08); this.v *= 0.6;
-      this.rail = null; this.grind = null; this.charging = false; this.charge = 0; this.grab = 0;
+      this.rail = null; this.grind = null; this.charging = false; this.charge = 0; this.grab = 0; this.gmeter = 0; this.preSteer = 0;
       this.emit('crash', { why, ko: !!hold });
     }
     stepCrash(dt) {

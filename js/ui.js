@@ -22,7 +22,7 @@
   };
 
   /* ---------------- save ---------------- */
-  const Save = (G.Save = { data: { v: 1, gear: 'ski', look: 0, units: 'mph', sound: true, quality: 'auto', runs: {}, seenHint: false, unlockAll: false, time: 'auto', wx: 'auto', coins: 0, own: [], kit: {} } });
+  const Save = (G.Save = { data: { v: 1, gear: 'ski', look: 0, units: 'mph', sound: true, quality: 'auto', runs: {}, seenHint: false, unlockAll: false, time: 'auto', wx: 'auto', coins: 0, own: [], kit: {}, safety: true } });
   Save.load = function (seed) {
     try { const raw = window.localStorage.getItem(KEY); if (raw) Object.assign(Save.data, JSON.parse(raw)); } catch (e) { /* storage can be unavailable */ }
     if (seed && seed.runs) {
@@ -243,6 +243,7 @@
     $('btnSound').addEventListener('click', UI.toggleSound); $('pSound').addEventListener('click', UI.toggleSound);
     $('btnUnits').addEventListener('click', UI.toggleUnits); $('pUnits').addEventListener('click', UI.toggleUnits);
     $('btnQuality').addEventListener('click', UI.cycleQuality); $('pQuality').addEventListener('click', UI.cycleQuality);
+    $('pSafety').addEventListener('click', UI.toggleSafety);
     document.querySelectorAll('[data-nav]').forEach((b) => b.addEventListener('click', () => { G.Audio.click(); UI.show(b.dataset.nav); }));
     $('shopGrid').addEventListener('click', (e) => {
       const b = e.target.closest('[data-buy],[data-equip]'); if (!b) return;
@@ -290,7 +291,12 @@
     document.querySelectorAll('[data-look]').forEach((b) => b.setAttribute('aria-pressed', String(+b.dataset.look === d.look)));
     const snd = 'Sound ' + (d.sound ? 'on' : 'off'), un = 'Speed in ' + (d.units === 'kmh' ? 'km/h' : 'mph'), q = 'Graphics: ' + d.quality;
     $('btnSound').textContent = snd; $('pSound').textContent = snd; $('btnUnits').textContent = un; $('pUnits').textContent = un; $('btnQuality').textContent = q; $('pQuality').textContent = q;
+    $('pSafety').textContent = 'Trick safety ' + (d.safety === false ? 'off' : 'on');
     const gn = G.GRABS[d.gear]; $('grabHelp').textContent = `Grab (${gn[1]}, ${gn[2]}, ${gn[3]}, ${gn[4]})`;
+  };
+  UI.toggleSafety = function () {
+    Save.data.safety = Save.data.safety === false; Save.write(); UI.syncTitle();
+    if (UI.game && UI.game.sim) UI.game.sim.safety = Save.data.safety !== false && !UI.game.sim.ghost;
   };
   UI.toggleSound = function () { Save.data.sound = !Save.data.sound; Save.write(); G.Audio.setOn(Save.data.sound); UI.syncTitle(); };
   UI.toggleUnits = function () { Save.data.units = Save.data.units === 'kmh' ? 'mph' : 'kmh'; Save.write(); UI.syncTitle(); };
@@ -419,7 +425,7 @@
         const sub = i.tier ? i.tier : i.hat === 'beanie' ? 'Beanie' : '';
         return `<li>${sw}<span class="nm">${G.esc(i.name)}${sub ? `<small>${G.esc(sub)}</small>` : ''}</span>${btn}</li>`;
       }).join('');
-      return `<div class="shopcat"><h3>${G.esc(cat.name)}</h3><p class="sub">${slot === 'gear' || slot === 'poles' ? 'Looks only for now \u2014 every star time stays comparable.' : 'Pick a look.'}</p><ul>${rows}</ul></div>`;
+      return `<div class="shopcat"><h3>${G.esc(cat.name)}</h3><p class="sub">${slot === 'gear' || slot === 'poles' ? 'Faster and sharper on edge. Par times are set on rentals, so the goals never move.' : 'Pick a look.'}</p><ul>${rows}</ul></div>`;
     }).join('');
   };
 
