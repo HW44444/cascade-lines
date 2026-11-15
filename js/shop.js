@@ -72,9 +72,12 @@
   };
 
   /* The rider's appearance: the chosen preset, with anything bought laid over it. */
-  G.kitLook = function () {
-    const d = G.Save.data, base = G.LOOKS[d.look] || G.LOOKS[0], kit = d.kit || {};
-    const pick = (slot) => (kit[slot] && G.owns(slot, kit[slot]) ? G.shopItem(slot, kit[slot]) : null);
+  G.kitLook = function (otherKit) {
+    const d = G.Save.data, base = G.LOOKS[d.look] || G.LOOKS[0];
+    const kit = otherKit || d.kit || {};
+    /* Another player's kit is theirs: take it as sent rather than checking it
+       against what this save has bought. */
+    const pick = (slot) => (kit[slot] ? (otherKit ? G.shopItem(slot, kit[slot]) : (G.owns(slot, kit[slot]) ? G.shopItem(slot, kit[slot]) : null)) : null);
     const head = pick('head'), jk = pick('jacket'), pt = pick('pants'), gr = pick('gear'), pl = pick('poles'), pk = pick('pack');
     return {
       name: base.name,

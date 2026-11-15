@@ -51,7 +51,7 @@
       this.canvas = canvas;
       this.renderer = new T.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
       this.camera = new T.PerspectiveCamera(62, 1, 0.3, 14000);
-      this.inp = { x: 0, y: 0, jump: false, boost: false, grab: 0 };
+      this.inp = { x: 0, y: 0, jump: false, boost: false, grab: 0, use: false };
       this.keys = {}; this.touch = { x: 0, y: 0, jump: false, boost: false, grab: 0 };
       this.mode = 'idle'; this.time = 0; this.acc = 0; this.last = 0;
       this.camPos = new T.Vector3(); this.camLook = new T.Vector3(); this.camTh = 0; this.camSnap = true; this.shake = 0; this.fov = 62;
@@ -110,6 +110,7 @@
       if (this.rider) { this.rider.dispose(); this.rider = null; }
       if (this.parts) { this.parts.dispose(); this.parts = null; }
       if (this.tracks) { this.tracks.dispose(); this.tracks = null; }
+      if (this.ghosts) { for (const k of Object.keys(this.ghosts)) this.ghosts[k].dispose(); this.ghosts = {}; }
       this.renderer.renderLists.dispose();
     }
     load(resort, def, mode) {
@@ -122,11 +123,13 @@
       this.world.scene.add(this.rider.root);
       this.parts = new G.Particles(this.world.scene, 700);
       this.tracks = new G.Tracks(this.world.scene, gear === 'ski' ? 2 : 1, !!this.world.sky.night);
+      this.ghosts = {};
       this.night = !!this.world.sky.night;
       this.goal = G.goals(resort, def);
       this.resize();
       if (mode === 'attract') { this.mode = 'attract'; this.sim.go(); this.sim.s = 62; this.sim.v = 13; this.camSnap = true; this.attractEnd = 0; }
       else this.beginIntro();
+      this.partySetup();
       this.setupHud();
     }
     restart() {
@@ -213,6 +216,7 @@
       i.y = G.clamp((k.ArrowDown || k.KeyS ? 1 : 0) - (k.ArrowUp || k.KeyW ? 1 : 0) + t.y, -1, 1);
       i.jump = !!k.Space || t.jump;
       i.boost = !!(k.ShiftLeft || k.ShiftRight) || t.boost;
+      i.use = !!k.KeyF;
       i.grab = k.KeyE ? -1 : k.KeyJ || k.KeyZ ? 1 : k.KeyK || k.KeyX ? 2 : k.KeyL || k.KeyC ? 3 : k.KeyI || k.KeyV ? 4 : t.grab;
     }
     togglePause() {
@@ -359,6 +363,51 @@
       const nEl = $('miniN'); nEl.style.transform = `translate(${(Math.sin(na) * nr).toFixed(1)}px, ${(-Math.cos(na) * nr).toFixed(1)}px)`;
     }
     setText(id, v) { if (this.hudCache[id] !== v) { this.hudCache[id] = v; $(id).textContent = v; } }
+    /* Everyone else in the party, drawn from the state coming off the wire. */
+    updateGhosts(dt) {
+      const N = G.Net; if (!N || N.state === 'off' || !this.world) { return; }
+      N.pump(dt, this.mode === 'play' ? this.sim : null);
+      const live = N.remotes;
+      for (const id of Object.keys(this.ghosts)) {
+        if (!live[id]) { this.ghosts[id].dispose(); delete this.ghosts[id]; }
+      }
+      for (const id of Object.keys(live)) {
+        const r = live[id];
+        if (!r.b) continue;                                  /* nothing heard from them yet */
+        let gh = this.ghosts[id];
+        if (!gh) {
+          gh = this.ghosts[id] = new G.Rider(r.gear, G.kitLook(r.kit), { label: r.name });
+          this.world.scene.add(gh.root);
+        }
+        r.run = this.run;
+        gh.update(dt, r, this.time);
+        gh.root.visible = r.gone < 3 && Math.abs(r.s - this.sim.s) < 420;
+      }
+    }
+    /* Party mode: boxes on the hill, one item held, F to use it. */
+    partySetup() {
+      const N = G.Net, on = N && N.state === 'racing' && G.Save.data.boxes !== false;
+      this.sim.boxes = on ? G.boxesFor(this.run) : null;
+      if (this.sim.boxes) for (const b of this.sim.boxes) b.y = this.run.height(b.s, b.x) + b.h;
+      if (this.world.setBoxes) this.world.setBoxes(this.sim.boxes);
+    }
+    dropHazard(kind, s, x, mine) {
+      this.sim.hazards.push({ kind, s, x, life: 22, own: !!mine });
+      this.world.addHazard(kind, s, x);
+    }
+    useItem() {
+      const sim = this.sim; if (!sim.item) return;
+      const k = sim.item; sim.item = 0;
+      G.useItem(k, sim, this);
+      this.hudCache.item = null;
+    }
+    /* Something another player set off. */
+    netBox(m) {
+      const sim = this.sim; if (!sim || this.mode !== 'play') return;
+      if (m.k === 'ice') this.dropHazard('ice', m.s, m.x, false);
+      else if (m.k === 'cloud') { if (sim.s > (m.ahead || 0)) { sim.blind = 3; this.msg('Whiteout!'); } }
+      else if (m.k === 'yard' && m.to === G.Net.you) sim.crash('Yard sale');
+    }
     updateHud() {
       const sim = this.sim, run = this.run, mph = G.Save.data.units !== 'kmh', d = this.def;
       this.setText('hudScore', G.fmt(sim.score));
@@ -367,6 +416,22 @@
       this.setText('hudUnit', mph ? 'mph' : 'km/h');
       const b = Math.round(sim.boost * 100);
       if (this.hudCache.boost !== b) { this.hudCache.boost = b; $('boostFill').style.transform = `scaleX(${b / 100})`; }
+      const it = sim.item || 0;
+      if (this.hudCache.item !== it) {
+        this.hudCache.item = it;
+        $('itemSlot').hidden = !it;
+        if (it) $('itemName').textContent = G.ITEMS[it].name;
+      }
+      const N = G.Net;
+      if (N && N.state === 'racing') {
+        const st = N.standings(sim), key = st.map((p) => p.id).join(',');
+        if (this.hudCache.stand !== key) {
+          this.hudCache.stand = key;
+          let el = $('standings');
+          if (!el) { el = document.createElement('div'); el.id = 'standings'; el.className = 'standings'; $('hud').appendChild(el); }
+          el.innerHTML = st.map((p, i) => `<div class="${p.me ? 'me' : ''}"><span>${i + 1}. ${G.esc(p.name)}</span><span>${Math.round(p.s)}m</span></div>`).join('');
+        }
+      } else if (this.hudCache.stand) { this.hudCache.stand = null; const el = $('standings'); if (el) el.remove(); }
       const gm = Math.round(G.clamp(sim.gmeter, 0, 1) * 50);
       if (this.hudCache.gm !== gm) {
         this.hudCache.gm = gm; $('gBar').hidden = gm <= 0;
@@ -434,11 +499,20 @@
       while (this.acc >= h && n < 8) { sim.step(h, inp); this.acc -= h; n++; }
       if (n === 8) this.acc = 0;
       this.handleEvents();
+      if (inp.use && !this.usePrev) this.useItem();
+      this.usePrev = inp.use;
 
       this.rider.update(dt, sim, this.time);
+      this.updateGhosts(dt);
       this.updateFx(dt);
       this.updateCamera(dt);
       this.world.update(dt, this.camera, sim.s, this.time, this.rider.root.position);
+      if (this.world.scene.fog) {
+        const b2 = G.clamp(sim.blind || 0, 0, 3) / 3;
+        const far = this.world.sky.fogFar;
+        this.world.scene.fog.far = far * (1 - b2) + 26 * b2;
+        this.world.scene.fog.near = this.world.sky.fogNear * (1 - b2) + 2 * b2;
+      }
       if (this.mode !== 'attract') {
         this.updateHud(); this.drawMini(dt);
         A.frame(sim.state === 'crash' ? 0 : sim.v, sim.state === 'ground' ? Math.abs(sim.steer) * G.clamp(sim.v / 18, 0, 1) + (sim.braking ? 0.8 : 0) : 0, sim.state === 'grind', sim.boosting, sim.state === 'air');
@@ -477,7 +551,17 @@
         switch (e.type) {
           case 'takeoff': this.tracks.lift(); break;
           case 'pop': if (play) A.pop(); break;
+          case 'finish': if (G.Net && G.Net.state === 'racing') G.Net.finish(sim.finishTime, sim.score, false); break;
           case 'noheight': if (play) this.msg('Not enough height'); break;
+          case 'box': {
+            const st = G.Net && G.Net.state === 'racing' ? G.Net.standings(sim) : null;
+            const place = st ? st.findIndex((p) => p.me) / Math.max(1, st.length - 1) : 0.5;
+            sim.item = G.rollItem(place);
+            if (play) { this.msg(G.ITEMS[sim.item].name + ' \u2014 F to use'); this.hudCache.item = null; }
+            break;
+          }
+          case 'blocked': if (play) this.msg('Blocked (' + e.why + ')'); break;
+          case 'slip': if (play) { this.msg('Ice!'); this.shake = Math.max(this.shake, 0.5); } break;
           case 'land': this.shake = Math.max(this.shake, G.clamp(-e.vn / 22, 0.15, 1)); this.burst(26, 4 + Math.min(6, -e.vn * 0.4)); if (play) A.land(G.clamp(-e.vn / 20, 0, 1)); break;
           case 'trick': if (play) { this.popTrick(e); A.trick(e.n); if (!G.Save.data.seenHint) { G.Save.data.seenHint = true; G.Save.write(); $('hudHint').hidden = true; } } break;
           case 'bank': if (play) { const el = $('hudScore'); el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); if (e.n > 1) { this.msg(e.n + ' trick combo  +' + G.fmt(e.gain), 'good'); A.bank(); } } break;

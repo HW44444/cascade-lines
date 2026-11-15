@@ -72,8 +72,8 @@
   }
 
   class Rider {
-    constructor(gear, look) {
-      this.gear = gear; this.look = look || G.LOOKS[0];
+    constructor(gear, look, opts) {
+      this.gear = gear; this.look = look || G.LOOKS[0]; this.opts = opts || {};
       this.root = new T.Group(); this.tilt = new T.Group(); this.spinG = new T.Group(); this.body = new T.Group();
       this.root.add(this.tilt); this.tilt.add(this.spinG); this.spinG.add(this.body);
       this.spinG.position.y = 0.85; this.body.position.y = -0.85;
@@ -147,10 +147,28 @@
       }
       const gog = add(this.headG, new T.BoxGeometry(0.2, 0.075, 0.08), this.mat('#ff8a2b')); gog.position.set(0, 0.012, -0.085);
       add(this.headG, new T.BoxGeometry(0.235, 0.05, 0.2), dark).position.set(0, 0.012, 0.0);
+      if (this.opts.label) this.makeLabel(this.opts.label);
     }
-    dispose() { this.root.traverse((o) => { if (o.geometry) o.geometry.dispose(); }); this.mats.forEach((m) => m.dispose()); }
+    dispose() {
+      this.root.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
+      this.mats.forEach((m) => m.dispose());
+      if (this.label) { this.label.material.dispose(); this.labelTex.dispose(); }
+      if (this.root.parent) this.root.parent.remove(this.root);
+    }
 
     /* drive the model from the simulation */
+    /* A name over the head, so you can tell who just blew past you. */
+    makeLabel(text) {
+      const cv = document.createElement('canvas'); cv.width = 256; cv.height = 64;
+      const c = cv.getContext('2d');
+      c.font = '700 34px ui-sans-serif, system-ui, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.lineWidth = 7; c.strokeStyle = 'rgba(14,28,37,.75)'; c.strokeText(text, 128, 34);
+      c.fillStyle = '#fff'; c.fillText(text, 128, 34);
+      const tex = new T.CanvasTexture(cv); tex.anisotropy = 2;
+      const sp = new T.Sprite(new T.SpriteMaterial({ map: tex, depthTest: false, transparent: true, sizeAttenuation: true }));
+      sp.scale.set(2.6, 0.65, 1); sp.position.y = 2.25; sp.renderOrder = 20;
+      this.root.add(sp); this.label = sp; this.labelTex = tex;
+    }
     update(dt, sim, time) {
       const run = sim.run, gear = this.gear, st = sim.state, board = gear === 'board';
       run.toWorld(sim.s, sim.x, sim.y, this.root.position);

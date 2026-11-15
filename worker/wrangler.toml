@@ -1,0 +1,11 @@
+name = "cascade-lines-party"
+main = "src/index.js"
+compatibility_date = "2026-11-14"
+
+[[durable_objects.bindings]]
+name = "PARTY"
+class_name = "Party"
+
+[exports.Party]
+type = "durable-object"
+storage = "sqlite"

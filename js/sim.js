@@ -71,6 +71,8 @@
       this.state = 'ready'; this.bodyYaw = 0; this.spin = 0; this.flip = 0; this.spinV = 0; this.flipV = 0; this.flipDir = 1; this.sw = false;
       this.air = 0; this.t = 0; this.score = 0; this.boost = 0.5; this.boosting = false; this.charge = 0; this.charging = false;
       this.preSteer = 0; this.spinCap = 0; this.gmeter = 0; this.noHeight = 0;
+      this.item = 0; this.rocket = 0; this.magnet = 0; this.shield = 0; this.blind = 0; this.slip = 0;
+      this.hazards = []; this.boxes = null;
       this.grab = 0; this.autoG = 0; this.grabT = {}; this.rail = null; this.grind = null; this.crashT = 0; this.inv = 0; this.counts = {};
       this.chain = { pts: 0, n: 0, timer: 0, last: '' };
       this.finished = false; this.finishTime = 0; this.maxV = 0; this.airTotal = 0; this.tricks = 0; this.crashes = 0; this.bestChain = 0; this.bestTrick = null;
@@ -99,6 +101,9 @@
       if (this.finished && this.chain.n && this.state === 'ground') this.bank();
       if (this.v > this.maxV) this.maxV = this.v;
       if (this.gmeter > 0) this.gmeter = Math.max(0, this.gmeter - dt * 0.34);   /* the legs recover */
+      if (this.rocket > 0) { this.rocket -= dt; this.v += 26 * dt; }
+      if (this.magnet > 0) this.magnet -= dt;
+      if (this.blind > 0) this.blind -= dt;
     }
 
     stepGround(dt, inp) {
@@ -371,10 +376,12 @@
 
     crash(why, hold) {
       if (this.ghost || this.state === 'crash') return;
+      if (this.shield > 0) { this.shield = 0; this.gmeter = 0; this.emit('blocked', { why }); return; }
       if (this.chain.n) this.emit('lost', { pts: this.chain.pts });
       this.chain = { pts: 0, n: 0, timer: 0, last: '' };
       this.state = 'crash'; this.crashT = hold || 1.5; this.crashes++; this.ko = !!hold; this.boost = Math.max(0, this.boost - 0.08); this.v *= 0.6;
       this.rail = null; this.grind = null; this.charging = false; this.charge = 0; this.grab = 0; this.gmeter = 0; this.preSteer = 0;
+      this.rocket = 0; this.magnet = 0; this.blind = 0; this.slip = 0;
       this.emit('crash', { why, ko: !!hold });
     }
     stepCrash(dt) {
@@ -439,11 +446,37 @@
         const list = run.ob[q]; if (!list) continue;
         for (let i = 0; i < list.length; i++) {
           const o = list[i]; if (o.taken) continue;
-          if (Math.abs(this.s - o.s) < 2.6 && Math.abs(this.x - o.x) < 2.6 && Math.abs(this.y + 0.9 - o.y) < (o.air ? 3.4 : 2.4)) {
+          const reach = this.magnet > 0 ? 20 : 2.6, up = this.magnet > 0 ? 20 : o.air ? 3.4 : 2.4;
+          if (Math.abs(this.s - o.s) < reach && Math.abs(this.x - o.x) < reach && Math.abs(this.y + 0.9 - o.y) < up) {
             o.taken = true; this.boost = Math.min(1, this.boost + 0.15); this.score += 50; this.emit('orb');
           }
         }
       }
+      this.partyBits();
+    }
+
+    /* Power-up boxes and anything dropped on the hill. Party mode only. */
+    partyBits() {
+      if (this.boxes && !this.item) {
+        for (const bx of this.boxes) {
+          if (bx.taken) continue;
+          if (Math.abs(this.s - bx.s) < 3.2 && Math.abs(this.x - bx.x) < 3.2 && Math.abs(this.y + 0.9 - bx.y) < 3.2) {
+            bx.taken = 1; this.emit('box', { s: bx.s, x: bx.x }); break;
+          }
+        }
+      }
+      for (let i = this.hazards.length - 1; i >= 0; i--) {
+        const hz = this.hazards[i];
+        if ((hz.life -= 0.016) <= 0) { this.hazards.splice(i, 1); continue; }
+        if (hz.own || this.state !== 'ground') continue;
+        if (Math.abs(this.s - hz.s) < 4 && Math.abs(this.x - hz.x) < 4) {
+          this.hazards.splice(i, 1);
+          if (this.shield > 0) { this.shield = 0; this.emit('blocked', { why: 'Ice patch' }); }
+          else { this.slip = 1.4; this.emit('slip'); }
+        }
+      }
+      /* Ice does not knock you down, it takes your edges away for a moment. */
+      if (this.slip > 0) { this.slip -= 0.016; this.th += Math.sin(this.t * 15) * 0.85 * 0.016; }
     }
   }
   G.Sim = Sim;

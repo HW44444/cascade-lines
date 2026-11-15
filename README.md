@@ -57,3 +57,9 @@ Run and lift geometry for Mt. Hood Meadows and Timberline comes from OpenStreetM
 via the [OpenSkiStats](https://github.com/dhimmel/openskistats) dataset.
 OpenStreetMap data is © OpenStreetMap contributors, licensed under the
 [Open Database License](https://opendatacommons.org/licenses/odbl/).
+
+## Riding together
+
+Multiplayer lives in `worker/` and needs deploying once — see `worker/README.md`.
+Until it is deployed the Party screen simply asks for a server address; nothing
+else in the game changes.

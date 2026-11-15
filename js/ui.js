@@ -22,7 +22,7 @@
   };
 
   /* ---------------- save ---------------- */
-  const Save = (G.Save = { data: { v: 1, gear: 'ski', look: 0, units: 'mph', sound: true, quality: 'auto', runs: {}, seenHint: false, unlockAll: false, time: 'auto', wx: 'auto', coins: 0, own: [], kit: {}, safety: true } });
+  const Save = (G.Save = { data: { v: 1, gear: 'ski', look: 0, units: 'mph', sound: true, quality: 'auto', runs: {}, seenHint: false, unlockAll: false, time: 'auto', wx: 'auto', coins: 0, own: [], kit: {}, safety: true, partyUrl: '', name: '', boxes: true } });
   Save.load = function (seed) {
     try { const raw = window.localStorage.getItem(KEY); if (raw) Object.assign(Save.data, JSON.parse(raw)); } catch (e) { /* storage can be unavailable */ }
     if (seed && seed.runs) {
@@ -245,6 +245,26 @@
     $('btnQuality').addEventListener('click', UI.cycleQuality); $('pQuality').addEventListener('click', UI.cycleQuality);
     $('pSafety').addEventListener('click', UI.toggleSafety);
     document.querySelectorAll('[data-nav]').forEach((b) => b.addEventListener('click', () => { G.Audio.click(); UI.show(b.dataset.nav); }));
+    $('partyWrap').addEventListener('click', (e) => {
+      const N = G.Net, id = e.target.id;
+      if (id === 'pSaveUrl') { Save.data.partyUrl = $('pUrl').value.trim(); Save.write(); UI.renderParty(); }
+      else if (id === 'pForget') { Save.data.partyUrl = ''; Save.write(); UI.renderParty(); }
+      else if (id === 'pCreate') {
+        Save.data.name = $('pName').value.trim(); Save.write();
+        N.newCode().then((c) => N.connect(c)).catch((err) => { N.error = String(err.message || err); UI.renderParty(); });
+        N.state = 'connecting'; UI.renderParty();
+      } else if (id === 'pJoin') {
+        const c = ($('pCode').value || '').trim().toUpperCase();
+        if (c.length >= 4) { Save.data.name = (($('pName') || {}).value || Save.data.name || '').trim(); Save.write(); N.connect(c); }
+      } else if (id === 'pLeave') { N.close(); UI.renderParty(); }
+      else if (id === 'pPickRun') { UI.show('map'); }
+      else if (id === 'pStart') { N.startRace(); }
+      else if (id === 'pReady') { N.setReady(!(N.players.find((p) => p.id === N.you) || {}).ready); }
+      else if (id === 'pBoxes') { Save.data.boxes = $('pBoxes').checked; Save.write(); }
+    });
+    G.Net.onchange = () => { if (!$('s-party').hidden) UI.renderParty(); };
+    G.Net.ongo = () => UI.partyGo();
+    G.Net.onbox = (m) => { if (UI.game) UI.game.netBox(m); };
     $('shopGrid').addEventListener('click', (e) => {
       const b = e.target.closest('[data-buy],[data-equip]'); if (!b) return;
       const slot = b.dataset.buy || b.dataset.equip;
@@ -258,7 +278,13 @@
     $('mapsheet').addEventListener('click', (e) => { const h = e.target.closest('[data-run]'); if (h) UI.selectRun(h.dataset.run); });
     $('runlist').addEventListener('click', (e) => { const h = e.target.closest('[data-run]'); if (h) UI.selectRun(h.dataset.run); });
     $('sel').addEventListener('click', (e) => {
-      if (e.target.closest('#btnGo')) return UI.dropIn();
+      if (e.target.closest('#btnGo')) {
+        const N = G.Net;
+        if (N.state === 'lobby' && (N.players.find((p) => p.id === N.you) || {}).host) {
+          N.pickRun(UI.resort, G.runById(UI.resort, UI.runId)); return UI.show("party");
+        }
+        return UI.dropIn();
+      }
       const c = e.target.closest('[data-cond]');
       if (c) { G.Audio.click(); Save.data[c.dataset.cond] = c.dataset.val; Save.write(); UI.renderSel(); }
     });
@@ -308,15 +334,16 @@
 
   UI.show = function (name) {
     $('mapover').hidden = true;
-    ['title', 'resorts', 'map', 'shop'].forEach((n) => { $('s-' + n).hidden = n !== name; });
+    ['title', 'resorts', 'map', 'shop', 'party'].forEach((n) => { $('s-' + n).hidden = n !== name; });
     UI.hideOverlays();
     if (UI.game && UI.game.mode !== 'attract') UI.game.attract();
     if (name === 'resorts') UI.renderResorts();
     if (name === 'map') UI.renderMap();
     if (name === 'shop') UI.renderShop();
+    if (name === 'party') UI.renderParty();
     const el = $('s-' + name); if (el) el.scrollTop = 0;
   };
-  UI.hideScreens = function () { ['title', 'resorts', 'map', 'shop'].forEach((n) => { $('s-' + n).hidden = true; }); };
+  UI.hideScreens = function () { ['title', 'resorts', 'map', 'shop', 'party'].forEach((n) => { $('s-' + n).hidden = true; }); };
   UI.hideOverlays = function () { $('pause').hidden = true; $('results').hidden = true; };
   UI.showPause = function () {
     $('pauseSub').textContent = UI.game.def.name + ' \u00b7 ' + UI.game.resort.name;
@@ -407,6 +434,69 @@
   UI.dropIn = function () {
     const r = UI.resort, d = G.runById(r, UI.runId);
     G.Audio.init(); UI.hideScreens(); UI.game.load(r, d, 'play');
+  };
+
+  /* ---------------- party ---------------- */
+  const esc = G.esc;
+  UI.renderParty = function () {
+    const N = G.Net, w = $('partyWrap');
+    const name = esc(Save.data.name || '');
+    if (!N.configured()) {
+      w.innerHTML = `<div class="pcard">
+        <h3>Point the game at your party server</h3>
+        <p>Riding together needs a small server of your own. The code for it is in the repo under <code>worker/</code>; deploy it once with <code>npx wrangler deploy</code> and paste the address it prints here. Nothing else changes.</p>
+        <label for="pUrl">Party server address</label>
+        <input id="pUrl" placeholder="https://cascade-lines-party.&lt;you&gt;.workers.dev" value="${esc(Save.data.partyUrl || '')}">
+        <div class="row"><button class="go" id="pSaveUrl">Save</button></div>
+      </div>`;
+      return;
+    }
+    if (N.state === 'off' || N.state === 'connecting') {
+      w.innerHTML = `<div class="pcard">
+          <h3>Start a party</h3>
+          <p>You get a five-letter code. Send it to whoever is riding with you.</p>
+          <label for="pName">Your name</label><input id="pName" maxlength="14" placeholder="Rider" value="${name}">
+          <div class="row"><button class="go" id="pCreate"${N.state === 'connecting' ? ' disabled' : ''}>${N.state === 'connecting' ? 'Connecting…' : 'Make a party'}</button></div>
+          ${N.error ? `<p class="perr">${esc(N.error)}</p>` : ''}
+        </div>
+        <div class="pcard">
+          <h3>Join one</h3>
+          <p>Type the code you were given.</p>
+          <input id="pCode" class="code" maxlength="5" placeholder="ABCDE">
+          <div class="row"><button class="go" id="pJoin">Join</button><button class="alt" id="pForget">Change server</button></div>
+        </div>`;
+      return;
+    }
+    /* In a party. */
+    const me = N.players.find((p) => p.id === N.you) || {};
+    const pick = N.pick, resort = pick && G.resortById(pick.resort);
+    const run = resort && resort.runs.find((r) => r.id === pick.run);
+    w.innerHTML = `<div class="pcard">
+        <h3>Party code</h3>
+        <div class="bigcode">${esc(N.code)}</div>
+        <p style="text-align:center">${N.players.length} of 8 · ${N.ping ? N.ping + ' ms' : '…'}</p>
+        <ul class="roster">${N.players.map((p) => `<li><span>${esc(p.name)}${p.id === N.you ? ' (you)' : ''}</span><span class="tag">${p.host ? 'Host' : p.ready ? 'Ready' : ''}</span></li>`).join('')}</ul>
+        <div class="row" style="margin-top:12px"><button class="alt" id="pLeave">Leave</button></div>
+      </div>
+      <div class="pcard">
+        <h3>The run</h3>
+        <p>${run ? esc(resort.short + ' · ' + run.name) : me.host ? 'Pick one from the trail map and it goes to everyone.' : 'Waiting for the host to pick.'}</p>
+        ${me.host ? `<div class="row">
+            <button class="alt" id="pPickRun">Choose a run</button>
+            <button class="go" id="pStart"${run ? '' : ' disabled'}>Start the race</button>
+          </div>
+          <label style="margin-top:12px"><input type="checkbox" id="pBoxes"${Save.data.boxes === false ? '' : ' checked'} style="width:auto;margin:0 6px 0 0">Power-up boxes</label>`
+        : `<div class="row"><button class="${me.ready ? 'alt' : 'go'}" id="pReady">${me.ready ? 'Not ready' : "I'm ready"}</button></div>`}
+      </div>`;
+  };
+
+  UI.partyGo = function () {
+    const N = G.Net, pick = N.pick; if (!pick) return;
+    const r = G.resortById(pick.resort); if (!r) return;
+    const d = r.runs.find((q) => q.id === pick.run); if (!d) return;
+    Save.data.time = pick.time || 'auto'; Save.data.wx = pick.wx || 'auto';
+    UI.resort = r; UI.hideScreens(); UI.hideOverlays();
+    UI.game.load(r, d, 'play');
   };
 
   /* ---------------- shop ---------------- */

@@ -1104,6 +1104,7 @@
       this.dome.position.copy(camera.position);
       this.rings.position.set(camera.position.x, camera.position.y * 0.82 - 260, camera.position.z);
       this.updateLift(time);
+      if (this.boxMeshes || this.hazG) this.stepParty(dt, time);
       for (const m of this.orbMeshes) {
         const o = m.userData.o;
         if (o.taken) { if (m.visible) { m.scale.multiplyScalar(1 + dt * 12); if (m.scale.x > 3) m.visible = false; } }
@@ -1125,6 +1126,43 @@
           if (lz > 35 || lz < -35) pos[o + 2] = cp.z + ((((lz + 35) % 70) + 70) % 70) - 35;
         }
         m.geometry.attributes.position.needsUpdate = true;
+      }
+    }
+    /* Power-up boxes and dropped ice, drawn only while a party is on. */
+    setBoxes(boxes) {
+      if (this.boxG) { this.scene.remove(this.boxG); this.boxG.traverse((o) => { if (o.geometry) o.geometry.dispose(); }); }
+      this.boxG = null; this.boxMeshes = [];
+      if (!boxes || !boxes.length) return;
+      const g = this.own(new T.BoxGeometry(1.5, 1.5, 1.5));
+      const m = this.own(new T.MeshStandardMaterial({ color: 0xffd34d, emissive: 0x6b4a00, roughness: 0.45 }));
+      const grp = (this.boxG = new T.Group());
+      const v = new T.Vector3();
+      for (const b of boxes) {
+        const mesh = new T.Mesh(g, m);
+        this.run.toWorld(b.s, b.x, b.y, v); mesh.position.copy(v);
+        mesh.userData.b = b; grp.add(mesh); this.boxMeshes.push(mesh);
+      }
+      this.scene.add(grp);
+    }
+    addHazard(kind, s, x) {
+      if (!this.hazG) { this.hazG = new T.Group(); this.scene.add(this.hazG); }
+      const g = this.own(new T.CircleGeometry(3.4, 18));
+      const m = this.own(new T.MeshStandardMaterial({ color: 0xbfe9ff, transparent: true, opacity: 0.72, roughness: 0.08, metalness: 0.1 }));
+      const mesh = new T.Mesh(g, m); mesh.rotation.x = -Math.PI / 2;
+      const v = new T.Vector3(); this.run.toWorld(s, x, this.run.height(s, x) + 0.06, v);
+      mesh.position.copy(v); mesh.userData.t = 22;
+      this.hazG.add(mesh);
+    }
+    stepParty(dt, time) {
+      if (this.boxMeshes) for (const m of this.boxMeshes) {
+        const b = m.userData.b;
+        if (b.taken) { if (m.visible) { m.scale.multiplyScalar(1 + dt * 11); if (m.scale.x > 3) m.visible = false; } }
+        else { m.rotation.y = time * 1.4; m.rotation.x = Math.sin(time * 1.1) * 0.25; }
+      }
+      if (this.hazG) for (let i = this.hazG.children.length - 1; i >= 0; i--) {
+        const m = this.hazG.children[i];
+        if ((m.userData.t -= dt) <= 0) { this.hazG.remove(m); m.geometry.dispose(); }
+        else m.material.opacity = 0.72 * Math.min(1, m.userData.t / 3);
       }
     }
     resetOrbs() { for (const m of this.orbMeshes) { m.userData.o.taken = false; m.visible = true; m.scale.set(1, 1, 1); } }
