@@ -499,7 +499,7 @@
     snow: { top: 0xb4bec8, hor: 0xe1e7ec, fog: 0xe1e7ec, fogNear: 30, fogFar: 520, sun: 0xffffff, sunI: 0.2, sunAz: 40, sunEl: 55, hemiSky: 0xe6ecf2, hemiGround: 0xffffff, hemiI: 0.76, snow: 1, ridge: 0xcfd7de, cap: 0xe6ebf0 },
     overcast: { top: 0x93a5b6, hor: 0xd6dee5, fog: 0xd6dee5, fogNear: 120, fogFar: 1150, sun: 0xfff8ee, sunI: 0.36, sunAz: 60, sunEl: 45, hemiSky: 0xd6e0ea, hemiGround: 0xffffff, hemiI: 0.62, snow: 0.3, ridge: 0x9fb0bf, cap: 0xe4eaef },
     dusk: { top: 0x2b3f86, hor: 0xffb48c, fog: 0xf2c2ae, fogNear: 260, fogFar: 2800, sun: 0xff9d62, sunI: 0.9, sunAz: 72, sunEl: 14, hemiSky: 0x8c9ee0, hemiGround: 0xffd8c8, hemiI: 0.72, snow: 0, ridge: 0x5f5488, cap: 0xffc9b8 },
-    night: { top: 0x040816, hor: 0x0f1b36, fog: 0x0a1226, fogNear: 50, fogFar: 650, sun: 0xdfe8ff, sunI: 0.46, sunAz: 20, sunEl: 62, hemiSky: 0x3c4f7c, hemiGround: 0x18203a, hemiI: 0.38, snow: 0.15, ridge: 0x0b1326, cap: 0x26324d, night: true },
+    night: { top: 0x02040c, hor: 0x0a1328, fog: 0x070d1c, fogNear: 50, fogFar: 650, sun: 0xdfe8ff, sunI: 0.34, sunAz: 20, sunEl: 62, hemiSky: 0x2f3f66, hemiGround: 0x121930, hemiI: 0.3, snow: 0.15, ridge: 0x0b1326, cap: 0x26324d, night: true },
   };
 
   function snowTexture(kind, aniso) {
@@ -740,11 +740,21 @@
       };
       const matP = this.own(new T.MeshStandardMaterial({ vertexColors: true, map: texP, roughness: 0.96, metalness: 0 }));
       const lamps = run.lamps;
-      const lampF = (s, x) => {
+      /* Night skiing: the corridor itself is lit end to end, brightest under a
+         post, and the ground falls away into the dark the moment you leave it.
+         The edge of the run is the brightness edge, which is what you actually
+         navigate by in the dark. */
+      const lampF = (s, x, hwI) => {
         if (!sky.night) return 1;
-        let f = 0.26; const qi = Math.round((s + 20) / 44);
-        for (let q = qi - 1; q <= qi + 1; q++) { const L = lamps[q]; if (!L) continue; const d2 = (s - L.s) * (s - L.s) + (x - L.x) * (x - L.x); f = Math.max(f, 0.26 + 0.74 * Math.exp(-d2 / (2 * 26 * 26))); }
-        return f;
+        let pool = 0; const qi = Math.round((s + 20) / 44);
+        for (let q = qi - 2; q <= qi + 2; q++) {
+          const L = lamps[q]; if (!L) continue;
+          const d2 = (s - L.s) * (s - L.s) + (x - L.x) * (x - L.x) * 0.55;
+          pool = Math.max(pool, Math.exp(-d2 / (2 * 34 * 34)));
+        }
+        const on = 1 - G.smooth((Math.abs(x) - hwI) / 9);       /* 1 on the piste, 0 off it */
+        const lit = 0.58 + 0.42 * pool, dark = 0.15 + 0.11 * pool;
+        return dark + (lit - dark) * on;
       };
       const RPC = 48; this.chunks = [];
       for (let i0 = 0; i0 < N - 1; i0 += RPC) {
@@ -762,7 +772,7 @@
             const d = Math.abs(x) - hwI; let cr = 0.975, cg = 0.985, cb = 1.0;
             grm[r * NC + c] = sc.pow > 0.5 || sc.mog > 0.5 ? 0 : 1 - G.smooth(d / 14);
             if (d > 0) { const t = G.smooth(d / 16) * (sc.trees === 'edge' || sc.trees === 'glade' ? 1 : 0.6); cr = G.lerp(cr, 0.76, t); cg = G.lerp(cg, 0.82, t); cb = G.lerp(cb, 0.92, t); }
-            const f = lampF(s, x), n = 0.985 + 0.03 * G.noise2(s / 9, x / 9, 5);
+            const f = lampF(s, x, hwI), n = 0.985 + 0.03 * G.noise2(s / 9, x / 9, 5);
             col[dst] = cr * f * n; col[dst + 1] = cg * f * n; col[dst + 2] = cb * f * n;
             uv[(r * NC + c) * 2] = x / 2.6; uv[(r * NC + c) * 2 + 1] = s / 2.6;
           }
@@ -857,7 +867,7 @@
         const fb = sec.trees === 'edge' || sec.trees === 'glade' ? 0.62 : sec.trees === 'sparse' ? 0.3 : 0.06;
         forest[j * nx + i] = G.clamp(fb + (midE - h) / 520, 0, 0.85);
       }
-      const dim = sky.night ? 0.3 : 1;
+      const dim = sky.night ? 0.2 : 1;
       for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
         const k = j * nx + i, X = xs[i], Z = zs[j], o = k * 3;
         pos[o] = X; pos[o + 1] = hs[k]; pos[o + 2] = Z;
@@ -907,7 +917,7 @@
           const h = run.gridH(s, x) + kickH(k, s, x) + (border ? -0.14 : 0.035);
           run.toWorld(s, x, h, v); const o = (a * nl + b) * 3; pos[o] = v.x; pos[o + 1] = v.y; pos[o + 2] = v.z;
           const lip = !k.ride && us[a] >= k.L - 0.5 && us[a] <= k.L + 0.01 && b >= 2 && b <= nl - 3;
-          const nf = this.sky.night ? 0.44 : 1;
+          const nf = this.sky.night ? 0.82 : 1;
           col[o] = (lip ? acc.r : 0.955) * nf; col[o + 1] = (lip ? acc.g : 0.97) * nf; col[o + 2] = (lip ? acc.b : 1.0) * nf;
           if (a < nu - 1 && b < nl - 1) { const p = a * nl + b; idx.push(p, p + 1, p + nl + 1, p, p + nl + 1, p + nl); }
         }
