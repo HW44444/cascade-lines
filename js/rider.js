@@ -79,7 +79,7 @@
       this.spinG.position.y = 0.85; this.body.position.y = -0.85;
       this.spinG.rotation.order = 'YXZ';
       this.n = new T.Vector3(0, 1, 0); this.lean = 0; this.leanV = 0; this.brakeYaw = 0; this.pitchBack = 0;
-      this.airing = false; this.reland = 0; this.relandD = 0; this.relandE = new T.Vector3();
+      this.airing = false; this.reland = 0; this.relandD = 0; this.relandQ = new T.Quaternion();
       this.spot = 0; this.twist = 0; this.prep = 0;
       this.hipLat = 0; this.counter = 0; this.headLook = 0; this.plant = 0; this.plantSide = 1; this.lastSteer = 0; this.bob = 0;
       this.crashRot = new T.Vector3(); this.crashVel = new T.Vector3();
@@ -236,45 +236,37 @@
            lying on your side and the sim, which only counts spin and flip, calls
            it clean. */
         if (sim.recov > 0) {
-          _eu.setFromQuaternion(this.spinG.quaternion, 'YXZ');
-          _eu.z = G.damp(_eu.z, 0, 1.4 + 9 * sim.recov, dt);
-          this.spinG.quaternion.setFromEuler(_eu);
+          /* Unwind the cork, leaving the flip and the spin exactly as they are. */
+          untwist(this.spinG.quaternion, sim, this.brakeYaw, 1 - Math.exp(-(1.4 + 9 * sim.recov) * dt));
         }
       } else {
         this.crashRot.set(0, 0, 0);
         const press = st === 'grind' && sim.grind ? sim.grind.press * 0.28 : 0;
         _eu.set(sim.flip + press, -(sim.bodyYaw + this.brakeYaw), this.pitchBack * (this.brakeYaw >= 0 ? 1 : -1));
         _qc.setFromEuler(_eu);
-        const tx = sim.flip + press, ty = -(sim.bodyYaw + this.brakeYaw), tz = _eu.z;
         if (this.airing) {
           /* Touchdown. Remember how the body is lying and give it a real moment
              to come up - the further over it is, the longer it takes. The old
              per-frame slerp covered most of the angle in three frames, which is
              what read as a fall and then a pop. */
           this.airing = false;
-          _eu.setFromQuaternion(this.spinG.quaternion, 'YXZ');
-          this.relandE.set(_eu.x, _eu.y, _eu.z);
-          const off = Math.abs(G.wrapPi(_eu.x - tx)) + Math.abs(G.wrapPi(_eu.y - ty)) + Math.abs(_eu.z - tz);
-          this.relandD = 0.2 + 0.22 * G.clamp(off / 2.4, 0, 1);
+          this.relandQ.copy(this.spinG.quaternion);
+          this.relandD = 0.2 + 0.22 * G.clamp(this.relandQ.angleTo(_qc) / 2.4, 0, 1);
           this.reland = this.relandD;
         }
         if (this.reland > 0) {
           this.reland -= dt;
-          /* Axis by axis rather than one slerp: a slerp takes the shortest arc
-             through orientation space, which can swing roll back OUT on the way
-             to square. Eased at both ends, so it leaves the landing pose gently
-             and arrives without a step. */
           const k = G.smooth(1 - Math.max(0, this.reland) / this.relandD);
-          const a0 = this.relandE, near = (t, from) => t + TAU * Math.round((from - t) / TAU);
-          _eu.set(a0.x + (near(tx, a0.x) - a0.x) * k,
-                  a0.y + (near(ty, a0.y) - a0.y) * k,
-                  a0.z + (tz - a0.z) * k);
-          this.spinG.quaternion.setFromEuler(_eu);
+          this.spinG.quaternion.copy(this.relandQ).slerp(_qc, k);
+          /* A slerp takes the shortest arc through orientation space, which can
+             swing the body's lean back OUT on the way to square. Pull it along
+             its own path instead, about the long axis, so the flip and the spin
+             are untouched. */
+          untwist(this.spinG.quaternion, sim, this.brakeYaw, k);
         } else this.spinG.quaternion.copy(_qc);
       }
-      /* Hand the roll back, so a landing can be judged on it. */
-      _eu.setFromQuaternion(this.spinG.quaternion, 'YXZ');
-      sim.roll = _eu.z;
+      /* Hand it back, so a landing can be judged on it. */
+      sim.roll = twistOf(this.spinG.quaternion, sim, this.brakeYaw);
       this.root.visible = sim.inv > 0 ? Math.floor(time * 14) % 2 === 0 : true;
 
       /* How long until the snow comes back up: a rider reaches for a landing well before it
@@ -383,6 +375,37 @@
   }
   const _qa = new T.Quaternion(), _qb = new T.Quaternion(), _qc = new T.Quaternion();
   const _ax = new T.Vector3(), _eu = new T.Euler(0, 0, 0, 'YXZ');
+  const _qi = new T.Quaternion(), _qr = new T.Quaternion(), _qk = new T.Quaternion();
+  const _eu2 = new T.Euler(0, 0, 0, 'YXZ');
+  const TWIST_EPS = 1e-6;
+
+  /* How far the body is twisted about its own long axis, measured against the
+     orientation the sim actually asked for: yaw by bodyYaw, pitch by flip,
+     nothing else. Anything left over is the roll a cork put in.
+
+     The obvious version - compare the body's up to world up - is wrong, and was
+     the bug: upside down at the top of a flip the body genuinely IS 180 degrees
+     from world up, so the recovery would try to take 180 degrees off by
+     twisting about the long axis, which is what threw in spins nobody asked
+     for. Against the intended orientation an inverted body reads as zero twist,
+     which is what it is. Euler decomposition is no good here either: YXZ is
+     singular at pitch = +/-90, which every flip passes through. */
+  function twistOf(q, sim, brakeYaw) {
+    _eu2.set(sim.flip, -(sim.bodyYaw + brakeYaw), 0);
+    _qi.setFromEuler(_eu2).invert().multiply(q);          /* intended -> actual */
+    return G.wrapPi(2 * Math.atan2(_qi.z, _qi.w));
+  }
+
+  /* Take a fraction k of that twist back out, about the body's own long axis. */
+  function untwist(q, sim, brakeYaw, k) {
+    _eu2.set(sim.flip, -(sim.bodyYaw + brakeYaw), 0);
+    _qi.setFromEuler(_eu2).invert().multiply(q);
+    const d = _qi.z, w = _qi.w;
+    if (Math.abs(d) < TWIST_EPS) return;
+    _qr.set(0, 0, d, w).normalize().invert();
+    _qk.set(0, 0, 0, 1).slerp(_qr, k);
+    q.multiply(_qk);
+  }
   const _f1 = new T.Vector3(), _f2 = new T.Vector3(), _a = new T.Vector3(), _c = new T.Vector3(), _k = new T.Vector3(), _h1 = new T.Vector3(), _t1 = new T.Vector3(), _t2 = new T.Vector3();
   G.Rider = Rider;
 })();
