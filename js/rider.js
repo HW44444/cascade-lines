@@ -3,7 +3,7 @@
   'use strict';
   const G = window.G, T = window.THREE;
   const Yax = new T.Vector3(0, 1, 0);
-  const PI = Math.PI;
+  const PI = Math.PI, TAU = Math.PI * 2;
 
   G.LOOKS = [
     { name: 'Patrol', jacket: '#e2341d', pants: '#16222c', helmet: '#f4f4f1', gear: '#ffc233' },
@@ -79,7 +79,8 @@
       this.spinG.position.y = 0.85; this.body.position.y = -0.85;
       this.spinG.rotation.order = 'YXZ';
       this.n = new T.Vector3(0, 1, 0); this.lean = 0; this.leanV = 0; this.brakeYaw = 0; this.pitchBack = 0;
-      this.airing = false; this.reland = 0; this.spot = 0; this.twist = 0; this.prep = 0;
+      this.airing = false; this.reland = 0; this.relandD = 0; this.relandE = new T.Vector3();
+      this.spot = 0; this.twist = 0; this.prep = 0;
       this.hipLat = 0; this.counter = 0; this.headLook = 0; this.plant = 0; this.plantSide = 1; this.lastSteer = 0; this.bob = 0;
       this.crashRot = new T.Vector3(); this.crashVel = new T.Vector3();
       this.pose = {}; NUMKEYS.forEach((k) => (this.pose[k] = POSES[gear].ride[k]));
@@ -211,7 +212,7 @@
       if (st === 'crash') {
         this.crashRot.addScaledVector(this.crashVel, dt); this.crashVel.multiplyScalar(1 - 1.2 * dt);
         this.spinG.rotation.set(this.crashRot.x, this.crashRot.y, this.crashRot.z);
-        this.airing = false; this.reland = 0;
+        this.airing = false; this.reland = 0; this.relandD = 0;
       } else if (st === 'air') {
         this.crashRot.set(0, 0, 0);
         if (!this.airing) {
@@ -228,16 +229,52 @@
           _qc.setFromAxisAngle(_ax, len * dt);
           this.spinG.quaternion.multiply(_qc);
         }
+        /* A cork leaves the body rolled over, which is the whole point of one -
+           but once the sticks are released the rider is looking for the landing,
+           so the roll comes off on the same ramp the spin does: barely at the
+           apex, firmly as the snow arrives. Without this you can touch down
+           lying on your side and the sim, which only counts spin and flip, calls
+           it clean. */
+        if (sim.recov > 0) {
+          _eu.setFromQuaternion(this.spinG.quaternion, 'YXZ');
+          _eu.z = G.damp(_eu.z, 0, 1.4 + 9 * sim.recov, dt);
+          this.spinG.quaternion.setFromEuler(_eu);
+        }
       } else {
         this.crashRot.set(0, 0, 0);
         const press = st === 'grind' && sim.grind ? sim.grind.press * 0.28 : 0;
         _eu.set(sim.flip + press, -(sim.bodyYaw + this.brakeYaw), this.pitchBack * (this.brakeYaw >= 0 ? 1 : -1));
         _qc.setFromEuler(_eu);
-        if (this.airing) { this.airing = false; this.reland = 0.2; }
-        /* ride the last of the rotation out instead of snapping square on touchdown */
-        if (this.reland > 0) { this.reland -= dt; this.spinG.quaternion.slerp(_qc, Math.min(1, dt * 17)); }
-        else this.spinG.quaternion.copy(_qc);
+        const tx = sim.flip + press, ty = -(sim.bodyYaw + this.brakeYaw), tz = _eu.z;
+        if (this.airing) {
+          /* Touchdown. Remember how the body is lying and give it a real moment
+             to come up - the further over it is, the longer it takes. The old
+             per-frame slerp covered most of the angle in three frames, which is
+             what read as a fall and then a pop. */
+          this.airing = false;
+          _eu.setFromQuaternion(this.spinG.quaternion, 'YXZ');
+          this.relandE.set(_eu.x, _eu.y, _eu.z);
+          const off = Math.abs(G.wrapPi(_eu.x - tx)) + Math.abs(G.wrapPi(_eu.y - ty)) + Math.abs(_eu.z - tz);
+          this.relandD = 0.2 + 0.22 * G.clamp(off / 2.4, 0, 1);
+          this.reland = this.relandD;
+        }
+        if (this.reland > 0) {
+          this.reland -= dt;
+          /* Axis by axis rather than one slerp: a slerp takes the shortest arc
+             through orientation space, which can swing roll back OUT on the way
+             to square. Eased at both ends, so it leaves the landing pose gently
+             and arrives without a step. */
+          const k = G.smooth(1 - Math.max(0, this.reland) / this.relandD);
+          const a0 = this.relandE, near = (t, from) => t + TAU * Math.round((from - t) / TAU);
+          _eu.set(a0.x + (near(tx, a0.x) - a0.x) * k,
+                  a0.y + (near(ty, a0.y) - a0.y) * k,
+                  a0.z + (tz - a0.z) * k);
+          this.spinG.quaternion.setFromEuler(_eu);
+        } else this.spinG.quaternion.copy(_qc);
       }
+      /* Hand the roll back, so a landing can be judged on it. */
+      _eu.setFromQuaternion(this.spinG.quaternion, 'YXZ');
+      sim.roll = _eu.z;
       this.root.visible = sim.inv > 0 ? Math.floor(time * 14) % 2 === 0 : true;
 
       /* How long until the snow comes back up: a rider reaches for a landing well before it

@@ -72,6 +72,7 @@
       this.air = 0; this.t = 0; this.score = 0; this.boost = 0.5; this.boosting = false; this.charge = 0; this.charging = false;
       this.preSteer = 0; this.spinCap = 0; this.gmeter = 0; this.noHeight = 0;
       this.item = 0; this.rocket = 0; this.magnet = 0; this.shield = 0; this.blind = 0; this.slip = 0;
+      this.recov = 0; this.roll = 0;   /* roll is emergent in the renderer, which writes it back */
       this.hazards = []; this.boxes = null;
       this.grab = 0; this.autoG = 0; this.grabT = {}; this.rail = null; this.grind = null; this.crashT = 0; this.inv = 0; this.counts = {};
       this.chain = { pts: 0, n: 0, timer: 0, last: '' };
@@ -228,6 +229,9 @@
          released spin keeps most of its momentum up high and is only hauled
          round to a landing once there is a landing to haul it round to. */
       const auth = G.clamp(1 - tLand / 0.95, 0, 1);
+      /* No input means the rider is trying to find the landing: the renderer
+         unwinds the roll on this same authority, since roll is its business. */
+      this.recov = Math.abs(ix) > 0.25 || Math.abs(iy) > 0.25 ? 0 : auth;
 
       if (Math.abs(ix) > 0.25) {
         /* The cap latched at takeoff sets how hard this one goes round. */
@@ -288,16 +292,22 @@
       /* Landings are not graded pass or fail. Each one puts load into a meter
          that bleeds off over a few seconds, so one ugly touchdown is survivable
          and three in a row are not - which is how a bad run actually ends. */
-      const yawLim = 0.95 + deep * 0.5, flipLim = 1.0 + deep * 0.55, vnLim = -30 - deep * 14;
+      /* Pitch is tighter than yaw: landing a touch sideways is recoverable and
+         looks it, landing nose-down does not. */
+      const yawLim = 0.95 + deep * 0.5, flipLim = 0.72 + deep * 0.4, vnLim = -30 - deep * 14;
+      const rollErr = Math.abs(this.roll), rollLim = 0.8 + deep * 0.35;
       const load = Math.max(0, yawErr / yawLim - 0.42) * 1.5
         + Math.max(0, flipErr / flipLim - 0.42) * 1.6
+        + Math.max(0, rollErr / rollLim - 0.38) * 1.5
         + Math.max(0, vn / vnLim - 0.5) * 1.35
         + Math.max(0, this.air - 1.5) * 0.22;
       if (!trivial) this.gmeter += load;
-      const blown = yawErr > yawLim * 1.5 || flipErr > flipLim * 1.5 || vn < vnLim * 1.45;
+      const blown = yawErr > yawLim * 1.5 || flipErr > flipLim * 1.5 || rollErr > rollLim * 1.6 || vn < vnLim * 1.45;
       if (!this.ghost && !trivial && (this.gmeter >= 1 || blown)) {
         this.gmeter = 0;
-        this.crash(flipErr > flipLim * 0.8 ? 'Over-rotated' : yawErr > yawLim * 0.8 ? 'Landed sideways' : 'Too much to absorb'); return;
+        this.crash(rollErr > rollLim * 0.9 ? 'Caught an edge'
+          : flipErr > flipLim * 0.8 ? 'Over-rotated'
+          : yawErr > yawLim * 0.8 ? 'Landed sideways' : 'Too much to absorb'); return;
       }
       const sketchy = !trivial && (load > 0.12 || this.gmeter > 0.4);
       this.sw = Math.abs(Math.round(this.bodyYaw / PI)) % 2 === 1;
