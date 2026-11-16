@@ -7,7 +7,7 @@
   const g = 9.81, PI = Math.PI, TAU = PI * 2;
   const CHAIN = (G.CHAIN = 6);   // seconds on the snow before a combo banks
   const SPIN = 7.4;   // rad/s while a spin key is held (about 425 deg/s)
-  const FLIP = 9.3;   // rad/s while a flip key is held
+  const FLIP = 11.0;   // rad/s while a flip key is held
 
   const GRABS = (G.GRABS = {
     ski: { 1: 'Mute', 2: 'Safety', 3: 'Tail', 4: 'Japan' },
@@ -165,10 +165,10 @@
       this.y = hN; this.vy = this.v * m;
       let launched = false;
       if (this.charging && !jump) {
-        this.vy = this.v * Math.max(mB, m) + 3.6 + 3.6 * this.charge; launched = true; this.emit('pop', { charge: this.charge });
+        this.vy = this.v * Math.max(mB, m) + 4.7 + 4.9 * this.charge; launched = true; this.emit('pop', { charge: this.charge });
       } else if (this.v > 5 && (this.v * this.v * (mB - mA)) / 1.6 > g * (sc.mog && this.v < 22 && run.featH(this.s, this.x) < 0.05 ? 9 : 1.6)) {
         this.vy = this.v * mB;
-        if (this.charging) { this.vy += (3.6 + 3.6 * this.charge) * 0.75; this.emit('pop', { charge: this.charge }); }
+        if (this.charging) { this.vy += (4.7 + 4.9 * this.charge) * 0.75; this.emit('pop', { charge: this.charge }); }
         launched = true;
       }
       if (launched) { this.charging = false; this.charge = 0; this.toAir(); }
@@ -379,7 +379,7 @@
       else if (r.type === 'rail') pts *= 1.12;
       if (gr.t > 0.12) this.addTrick(name, pts, false);
       this.state = 'air'; this.air = 0; this.spin = 0; this.flip = 0; this.spinV = 0; this.flipV = 0; this.grabT = {}; this.grab = 0; this.autoG = 0; this.takeSw = false;
-      this.vy = this.v * m + (pop ? 3.0 + 2.6 * this.charge : 0.5);
+      this.vy = this.v * m + (pop ? 3.9 + 3.5 * this.charge : 0.5);
       this.charging = false; this.charge = 0; this.rail = null; this.grind = null;
       this.emit('grindEnd', { pop });
     }
