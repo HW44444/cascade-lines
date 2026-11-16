@@ -7,7 +7,7 @@
   const g = 9.81, PI = Math.PI, TAU = PI * 2;
   const CHAIN = (G.CHAIN = 6);   // seconds on the snow before a combo banks
   const SPIN = 7.4;   // rad/s while a spin key is held (about 425 deg/s)
-  const FLIP = 7.0;   // rad/s while a flip key is held
+  const FLIP = 9.3;   // rad/s while a flip key is held
 
   const GRABS = (G.GRABS = {
     ski: { 1: 'Mute', 2: 'Safety', 3: 'Tail', 4: 'Japan' },
@@ -246,11 +246,11 @@
       }
 
       if (Math.abs(iy) > 0.25) {
-        const rate = FLIP * (0.5 + 0.5 * this.spinCap);
+        const rate = FLIP * (0.64 + 0.36 * this.spinCap);
         this.flipV = G.damp(this.flipV, iy * rate, 16, dt); this.flipDir = iy > 0 ? 1 : -1;
       } else {
         const err = Math.round(this.flip / TAU) * TAU - this.flip;
-        const corr = Math.abs(err) < 1.1 ? G.clamp(err * 7, -FLIP, FLIP) : this.flipDir * FLIP * 0.7;
+        const corr = Math.abs(err) < 1.1 ? G.clamp(err * 8, -FLIP, FLIP) : this.flipDir * FLIP * 0.76;
         const want = G.lerp(this.flipV * 0.92, corr, auth);
         this.flipV = G.damp(this.flipV, want, 5 + 9 * auth, dt);
       }
