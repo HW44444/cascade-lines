@@ -236,7 +236,12 @@
       if (Math.abs(ix) > 0.25) {
         /* The cap latched at takeoff sets how hard this one goes round. */
         const rate = sr * (0.42 + 0.58 * this.spinCap);
-        this.spinV = G.damp(this.spinV, ix * rate, 16, dt);
+        const tgt = ix * rate;
+        /* Winding a rotation up is quick; killing the one you have and sending
+           it back the other way is not. There is a body's worth of angular
+           momentum in it, and nothing in the air to push against. */
+        const fighting = this.spinV !== 0 && tgt * this.spinV < 0;
+        this.spinV = G.damp(this.spinV, tgt, fighting ? 3.1 : 16, dt);
       } else {
         const stop = this.bodyYaw + this.spinV * 0.15;
         const err = Math.round(stop / PI) * PI - this.bodyYaw;
@@ -247,7 +252,8 @@
 
       if (Math.abs(iy) > 0.25) {
         const rate = FLIP * (0.64 + 0.36 * this.spinCap);
-        this.flipV = G.damp(this.flipV, iy * rate, 16, dt); this.flipDir = iy > 0 ? 1 : -1;
+        const tgt = iy * rate, fighting = this.flipV !== 0 && tgt * this.flipV < 0;
+        this.flipV = G.damp(this.flipV, tgt, fighting ? 3.4 : 16, dt); this.flipDir = iy > 0 ? 1 : -1;
       } else {
         /* Let go of the flip and it takes the SHORTEST way to the nearest whole
            rotation - it never carries on round to find one. It used to: past

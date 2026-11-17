@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   const G = window.G, T = window.THREE;
-  const Yax = new T.Vector3(0, 1, 0);
+  const Yax = new T.Vector3(0, 1, 0), ZAX = new T.Vector3(0, 0, 1);
   const PI = Math.PI, TAU = Math.PI * 2;
 
   G.LOOKS = [
@@ -237,7 +237,7 @@
            it clean. */
         if (sim.recov > 0) {
           /* Unwind the cork, leaving the flip and the spin exactly as they are. */
-          untwist(this.spinG.quaternion, sim, this.brakeYaw, 1 - Math.exp(-(1.4 + 9 * sim.recov) * dt));
+          levelOut(this.spinG.quaternion, 1 - Math.exp(-(1.4 + 9 * sim.recov) * dt));
         }
       } else {
         this.crashRot.set(0, 0, 0);
@@ -262,11 +262,11 @@
              swing the body's lean back OUT on the way to square. Pull it along
              its own path instead, about the long axis, so the flip and the spin
              are untouched. */
-          untwist(this.spinG.quaternion, sim, this.brakeYaw, k);
+          levelOut(this.spinG.quaternion, k);
         } else this.spinG.quaternion.copy(_qc);
       }
       /* Hand it back, so a landing can be judged on it. */
-      sim.roll = twistOf(this.spinG.quaternion, sim, this.brakeYaw);
+      sim.roll = rollOf(this.spinG.quaternion);
       this.root.visible = sim.inv > 0 ? Math.floor(time * 14) % 2 === 0 : true;
 
       /* How long until the snow comes back up: a rider reaches for a landing well before it
@@ -375,36 +375,51 @@
   }
   const _qa = new T.Quaternion(), _qb = new T.Quaternion(), _qc = new T.Quaternion();
   const _ax = new T.Vector3(), _eu = new T.Euler(0, 0, 0, 'YXZ');
-  const _qi = new T.Quaternion(), _qr = new T.Quaternion(), _qk = new T.Quaternion();
-  const _eu2 = new T.Euler(0, 0, 0, 'YXZ');
-  const TWIST_EPS = 1e-6;
+  const _rt = new T.Vector3(), _qz = new T.Quaternion();
+  const _fw = new T.Vector3(), _tr = new T.Vector3(), _cr = new T.Vector3();
 
-  /* How far the body is twisted about its own long axis, measured against the
-     orientation the sim actually asked for: yaw by bodyYaw, pitch by flip,
-     nothing else. Anything left over is the roll a cork put in.
+  /* How far the body is tipped onto its side, in the frame spinG lives in -
+     which its parent has already tilted onto the slope, so this is roll
+     relative to the SNOW, not the horizon.
 
-     The obvious version - compare the body's up to world up - is wrong, and was
-     the bug: upside down at the top of a flip the body genuinely IS 180 degrees
-     from world up, so the recovery would try to take 180 degrees off by
-     twisting about the long axis, which is what threw in spins nobody asked
-     for. Against the intended orientation an inverted body reads as zero twist,
-     which is what it is. Euler decomposition is no good here either: YXZ is
-     singular at pitch = +/-90, which every flip passes through. */
-  function twistOf(q, sim, brakeYaw) {
-    _eu2.set(sim.flip, -(sim.bodyYaw + brakeYaw), 0);
-    _qi.setFromEuler(_eu2).invert().multiply(q);          /* intended -> actual */
-    return G.wrapPi(2 * Math.atan2(_qi.z, _qi.w));
+     It is the y of the body's own right axis, and that is the whole of it. No
+     singularity anywhere, and nothing to do with how much flip or spin has been
+     banked. A pure flip leaves the right axis alone however far round it goes,
+     so upside down at the top of one reads as zero roll, which is what it is. A
+     pure spin keeps it in the horizontal plane, also zero. Only a cork tips it,
+     and that is exactly the lean worth taking out.
+
+     Everything I tried before this was some flavour of measuring against a
+     reference that stops meaning anything partway through a rotation - world up
+     goes to 180 when inverted, a YXZ decomposition blows up at pitch 90, and
+     comparing against the orientation the sim intended goes unstable when the
+     two are half a turn apart. */
+  function rollOf(q) {
+    _rt.set(1, 0, 0).applyQuaternion(q);
+    return Math.asin(G.clamp(_rt.y, -1, 1));
   }
 
-  /* Take a fraction k of that twist back out, about the body's own long axis. */
-  function untwist(q, sim, brakeYaw, k) {
-    _eu2.set(sim.flip, -(sim.bodyYaw + brakeYaw), 0);
-    _qi.setFromEuler(_eu2).invert().multiply(q);
-    const d = _qi.z, w = _qi.w;
-    if (Math.abs(d) < TWIST_EPS) return;
-    _qr.set(0, 0, d, w).normalize().invert();
-    _qk.set(0, 0, 0, 1).slerp(_qr, k);
-    q.multiply(_qk);
+  /* Take a fraction k of that lean back out, about the body's own long axis, so
+     the flip and the spin are left exactly as they are.
+
+     Rolling by minus the measured angle is NOT the way to do it: inverted, that
+     drives the lean the wrong way and deepens it. What is wanted is to bring
+     the body's right axis back into the horizontal, and there are two ways to
+     do that - right side up and upside down - so take whichever is nearer. For
+     an inverted rider that is the one that keeps him inverted, which is the
+     whole point: levelling out is not the same as standing up. */
+  function levelOut(q, k) {
+    _fw.set(0, 0, 1).applyQuaternion(q);
+    _tr.crossVectors(Yax, _fw);
+    if (_tr.lengthSq() < 1e-4) return;          /* pointing straight up or down: no roll to speak of */
+    _tr.normalize();
+    _rt.set(1, 0, 0).applyQuaternion(q);
+    if (_rt.dot(_tr) < 0) _tr.negate();         /* the nearer of the two */
+    _cr.crossVectors(_rt, _tr);
+    const ang = Math.atan2(_cr.dot(_fw), G.clamp(_rt.dot(_tr), -1, 1));
+    if (Math.abs(ang) < 1e-5) return;
+    _qz.setFromAxisAngle(_fw, ang * k);
+    q.premultiply(_qz);
   }
   const _f1 = new T.Vector3(), _f2 = new T.Vector3(), _a = new T.Vector3(), _c = new T.Vector3(), _k = new T.Vector3(), _h1 = new T.Vector3(), _t1 = new T.Vector3(), _t2 = new T.Vector3();
   G.Rider = Rider;
