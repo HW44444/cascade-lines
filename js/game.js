@@ -551,7 +551,6 @@
         switch (e.type) {
           case 'takeoff': this.tracks.lift(); break;
           case 'pop': if (play) A.pop(); break;
-          case 'finish': if (G.Net && G.Net.state === 'racing') G.Net.finish(sim.finishTime, sim.score, false); break;
           case 'noheight': if (play) this.msg('Not enough height'); break;
           case 'box': {
             const st = G.Net && G.Net.state === 'racing' ? G.Net.standings(sim) : null;
@@ -580,6 +579,7 @@
           case 'orb': if (play) { A.orb(); const w = $('boostWrapP'); w.classList.remove('gain'); void w.offsetWidth; w.classList.add('gain'); } break;
           case 'grindStart': this.tracks.lift(); break;
           case 'finish':
+            if (G.Net && G.Net.state === 'racing') G.Net.finish(sim.finishTime, sim.score, false);
             if (play) {
               this.mode = 'done'; this.doneT = 0;
               const st = G.stars(this.goal, sim.score, sim.finishTime);

@@ -537,6 +537,22 @@
     if (g.mode === 'play') { g.pausedFrom = g.mode; g.mode = 'paused'; G.Audio.quiet(); }
   };
 
+  /* In a party, everyone who is already down the hill, fastest first. */
+  function partyBoard() {
+    const N = G.Net;
+    if (!N || N.state === 'off' || !N.players.length) return '';
+    const rows = [];
+    for (const id of Object.keys(N.remotes)) {
+      const r = N.remotes[id];
+      if (r.done) rows.push({ name: r.name, time: r.finishTime, me: false });
+      else rows.push({ name: r.name, time: null, me: false });
+    }
+    rows.push({ name: 'You', time: UI.game.sim.finishTime, me: true });
+    rows.sort((a2, b2) => (a2.time || 1e9) - (b2.time || 1e9));
+    return `<table class="res party"><tr><th colspan="2">Party</th></tr>${rows.map((r, i) =>
+      `<tr${r.me ? ' class="me"' : ''}><th>${i + 1}. ${G.esc(r.name)}</th><td class="num">${r.time ? G.fmtTime(r.time) : 'still riding'}</td></tr>`).join('')}</table>`;
+  }
+
   UI.showResults = function (resort, def, res, goal) {
     const out = Save.record(resort, def, res), mph = Save.data.units !== 'kmh';
     const idx = resort.runs.indexOf(def), ri = G.RESORTS.indexOf(resort);
@@ -562,7 +578,9 @@
         <tr><th>Top speed</th><td class="num">${Math.round(res.maxV * (mph ? 2.237 : 3.6))} ${mph ? 'mph' : 'km/h'}</td></tr>
         <tr><th>Air time</th><td class="num">${res.air.toFixed(1)} s</td></tr>
         <tr><th>Crashes</th><td class="num">${res.crashes}</td></tr>
+        <tr><th>Points earned</th><td class="num">+${G.fmt(out.pay.total)}<small> \u00b7 ${G.fmt(G.Wallet.get())} banked</small></td></tr>
       </table>
+      ${partyBoard()}
       ${banner}
       <div class="row">
         ${next ? `<button class="btn" id="rNext">Next: ${G.esc(next.def.name)}</button>` : ''}

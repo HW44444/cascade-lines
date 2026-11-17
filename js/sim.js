@@ -249,10 +249,22 @@
         const rate = FLIP * (0.64 + 0.36 * this.spinCap);
         this.flipV = G.damp(this.flipV, iy * rate, 16, dt); this.flipDir = iy > 0 ? 1 : -1;
       } else {
-        const err = Math.round(this.flip / TAU) * TAU - this.flip;
-        const corr = Math.abs(err) < 1.1 ? G.clamp(err * 8, -FLIP, FLIP) : this.flipDir * FLIP * 0.76;
-        const want = G.lerp(this.flipV * 0.92, corr, auth);
-        this.flipV = G.damp(this.flipV, want, 5 + 9 * auth, dt);
+        /* Let go of the flip and it takes the SHORTEST way to the nearest whole
+           rotation - it never carries on round to find one. It used to: past
+           roughly 63 degrees of error it kept going in the direction it was
+           already turning, which is an extra flip nobody asked for. The rate is
+           the same either way, so coming back the short way looks no different
+           from going on. */
+        let err = Math.round(this.flip / TAU) * TAU - this.flip;
+        /* Dead upside down the two ways round are equal; take the one it is
+           already turning, or it dithers between them frame to frame. */
+        if (Math.abs(Math.abs(err) - PI) < 0.3 && this.flipV) err = (this.flipV > 0 ? 1 : -1) * Math.abs(err);
+        /* No momentum carry on this axis, unlike the spin: the moment the key
+           is up the rider is heading back to upright and nowhere else. Carrying
+           the rotation on at the apex is how a release at 141 degrees used to
+           add another 242 before it settled. The damp keeps the rate change
+           smooth, so it does not snap into reverse. */
+        this.flipV = G.damp(this.flipV, G.clamp(err * 8, -FLIP, FLIP), 9, dt);
       }
       const dy = this.spinV * dt;
       this.bodyYaw += dy; this.spin += dy; this.flip += this.flipV * dt;
