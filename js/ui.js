@@ -568,7 +568,13 @@
     $('resCard').innerHTML = `
       <h2>${G.esc(def.name)}</h2>
       <p class="sub">${G.esc(resort.name)} · ${G.esc(def.lift)}</p>
-      <div class="bigstars" aria-label="${res.stars.filter(Boolean).length} of 3 stars">${res.stars.map((s) => star(s)).join('')}</div>
+      <div class="finishline">
+        <div class="bigtime"><b>${G.fmtTime(res.time)}</b><small>${bestTime ? 'New best time' : 'Time'}</small></div>
+        <div class="bigstars" aria-label="${res.stars.filter(Boolean).length} of 3 stars">
+          ${res.stars.map((s) => star(s)).join('')}
+          <small>${res.stars.filter(Boolean).length} of 3 stars</small>
+        </div>
+      </div>
       <table class="res">
         <tr><th>Score${goal.kind === 'park' ? ` <small>(goal ${G.fmt(goal.scores[0])} · ${G.fmt(goal.scores[1])} · ${G.fmt(goal.scores[2])})</small>` : ''}</th><td class="num">${nb(bestScore)}${G.fmt(res.score)}</td></tr>
         <tr><th>Time${goal.kind === 'time' ? ` <small>(goal ${G.fmtTime(goal.t2)} · ${G.fmtTime(goal.t3)})</small>` : ''}</th><td class="num">${nb(bestTime)}${G.fmtTime(res.time)}</td></tr>

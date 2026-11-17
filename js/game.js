@@ -152,7 +152,7 @@
       this.tracks.dispose(); this.tracks = new G.Tracks(this.world.scene, gear === 'ski' ? 2 : 1, this.night);
     }
     beginIntro() {
-      this.mode = 'intro'; this.introT = 0; this.introLen = 3.0; this.countShown = -1; this.camSnap = true; this.camTh = 0; this.doneT = 0; this.resultShown = false;
+      this.mode = 'intro'; this.introT = 0; this.introLen = 3.0; this.countShown = -1; this.camSnap = true; this.camTh = 0; this.doneT = 0; this.doneAt = null; this.resultShown = false;
       this.goalLit = [false, false, false]; this.acc = 0;
       $('count').hidden = true;
     }
@@ -535,7 +535,15 @@
     }
     updateDone(dt) {
       this.doneT += dt;
-      if (!this.resultShown && this.doneT > 1.7 && this.sim.state !== 'air' && this.sim.chain.n === 0) {
+      if (this.doneAt == null) this.doneAt = performance.now();
+      /* Wall clock, not accumulated frame time. dt is clamped to 50ms a frame,
+         so below 20fps the old counter ran slow - at 2fps it took 17 seconds to
+         reach 1.7 and the card looked like it was never coming. The waits for
+         the rider to land and the combo to bank are worth having, but neither
+         gets to hold the card up for ever. */
+      const since = (performance.now() - this.doneAt) / 1000;
+      const settled = (this.sim.state !== 'air' && this.sim.chain.n === 0) || since > 4;
+      if (!this.resultShown && since > 1.5 && settled) {
         this.resultShown = true;
         const sim = this.sim, g = this.goal;
         const res = { score: sim.score, time: sim.finishTime, stars: G.stars(g, sim.score, sim.finishTime), bestTrick: sim.bestTrick, maxV: sim.maxV, air: sim.airTotal, crashes: sim.crashes, bestChain: sim.bestChain, tricks: sim.tricks, gatesHit: sim.gatesHit, gatesTotal: sim.gates.length, penalty: sim.penalty };
@@ -581,7 +589,7 @@
           case 'finish':
             if (G.Net && G.Net.state === 'racing') G.Net.finish(sim.finishTime, sim.score, false);
             if (play) {
-              this.mode = 'done'; this.doneT = 0;
+              this.mode = 'done'; this.doneT = 0; this.doneAt = performance.now();
               const st = G.stars(this.goal, sim.score, sim.finishTime);
               st.forEach((ok, i) => { if (ok) { $('goal' + (i + 1)).classList.remove('missed'); $('goal' + (i + 1)).classList.add('lit'); A.star(i); } });
               if (st[1]) $('timerPill').classList.add('made');

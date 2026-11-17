@@ -228,7 +228,7 @@
       /* Rotation authority: weak at the apex, firm as the ground comes up. A
          released spin keeps most of its momentum up high and is only hauled
          round to a landing once there is a landing to haul it round to. */
-      const auth = G.clamp(1 - tLand / 0.95, 0, 1);
+      const auth = G.clamp(1 - tLand / 1.12, 0, 1);
       /* No input means the rider is trying to find the landing: the renderer
          unwinds the roll on this same authority, since roll is its business. */
       this.recov = Math.abs(ix) > 0.25 || Math.abs(iy) > 0.25 ? 0 : auth;
@@ -247,7 +247,7 @@
         const err = Math.round(stop / PI) * PI - this.bodyYaw;
         const corr = G.clamp(err * 4.4, -sr, sr);
         const want = G.lerp(this.spinV * 0.9, corr, auth);        /* momentum carries; the pull grows */
-        this.spinV = G.damp(this.spinV, want, 5 + 11 * auth, dt);
+        this.spinV = G.damp(this.spinV, want, 6 + 12 * auth, dt);
       }
 
       if (Math.abs(iy) > 0.25) {
